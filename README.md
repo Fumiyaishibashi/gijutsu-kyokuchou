@@ -1,36 +1,238 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 技術局長 (Gijutsu Kyokuchou)
 
-## Getting Started
+放送機器の安全確認を支援するAI搭載モバイルアプリケーション
 
-First, run the development server:
+**MBS Hackathon 2026 - C班**
+
+## 📱 概要
+
+「技術局長」は、若手放送技術者が機器やケーブルの理解不足により引き起こす可能性のある運用事故を防ぐためのアプリケーションです。スマートフォンまたはPCから機器の写真を撮影/アップロードすると、AWS Bedrock（Claude 3.5 Sonnet）が画像を分析し、検出された機器の周囲にリスクレベルに応じた色分けされたバウンディングボックスをオーバーレイ表示します。
+
+### 主な機能
+
+- 📸 **ハイブリッド入力**: カメラ撮影とファイルアップロードの両方に対応
+- 🤖 **AI画像分析**: Claude 3.5 Sonnetによる高精度な機器識別
+- 🎯 **ARオーバーレイ**: リスクレベルに応じた色分けされたバウンディングボックス表示
+- 🔒 **安全第一**: 不確実な場合は「WARNING」を表示する悲観的AI戦略
+- 💰 **コスト最適化**: S3ライフサイクルポリシーで3日後に画像を自動削除
+
+## 🏗️ アーキテクチャ
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Frontend (Next.js)                       │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │   Camera     │  │   Upload     │  │   Overlay    │     │
+│  │   Capture    │  │    Mode      │  │   Renderer   │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      AWS Cloud                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │      S3      │→ │    Lambda    │→ │   Bedrock    │     │
+│  │   (Images)   │  │  (Analyzer)  │  │  (Claude)    │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+│                            │                                │
+│                            ▼                                │
+│                    ┌──────────────┐                         │
+│                    │  DynamoDB    │                         │
+│                    │  (Results)   │                         │
+│                    └──────────────┘                         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## 🚀 クイックスタート
+
+### 前提条件
+
+- Node.js 18以上
+- Python 3.12以上
+- AWS CLI設定済み
+- AWS Bedrockへのアクセス権限
+
+### 1. リポジトリのクローン
+
+```bash
+git clone https://github.com/Mainichi-Broadcasting-System-Inc/gijutsu-kyokuchou.git
+cd gijutsu-kyokuchou
+```
+
+### 2. 依存関係のインストール
+
+```bash
+# フロントエンド
+npm install
+
+# インフラストラクチャ
+cd infrastructure
+npm install
+cd ..
+```
+
+### 3. 環境変数の設定
+
+`.env.local`ファイルを作成し、以下の内容を設定：
+
+```bash
+# AWS設定
+AWS_REGION=us-east-1
+AWS_ACCOUNT_ID=727598134232
+AWS_ACCESS_KEY_ID=your_access_key_here
+AWS_SECRET_ACCESS_KEY=your_secret_key_here
+
+# S3バケット名
+S3_BUCKET_NAME=gijutsu-kyokuchou-cteam-images
+
+# DynamoDBテーブル名
+DYNAMODB_TABLE_NAME=gijutsu-kyokuchou-cteam-results
+
+# Bedrock設定
+BEDROCK_REGION=us-east-1
+BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20241022-v2:0
+```
+
+### 4. インフラストラクチャのデプロイ
+
+```bash
+cd infrastructure
+npx cdk bootstrap aws://727598134232/us-east-1  # 初回のみ
+npx cdk deploy
+cd ..
+```
+
+詳細は[infrastructure/README.md](infrastructure/README.md)を参照してください。
+
+### 5. 開発サーバーの起動
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+ブラウザで http://localhost:3000 を開きます。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 📁 プロジェクト構成
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+gijutsu-kyokuchou/
+├── app/                      # Next.js App Router
+│   ├── api/                  # APIルート
+│   │   ├── upload-url/       # S3署名付きURL生成
+│   │   └── analyze-status/   # 分析ステータス確認
+│   ├── components/           # Reactコンポーネント
+│   └── page.tsx              # メインページ
+├── infrastructure/           # AWS CDKインフラストラクチャ
+│   ├── lib/                  # CDKスタック定義
+│   └── test/                 # インフラテスト
+├── lambda/                   # Lambda関数
+│   └── image_analyzer/       # 画像分析関数
+│       └── handler.py
+├── .kiro/                    # プロジェクト仕様
+│   ├── specs/
+│   │   └── gijutsu-kyokuchou/
+│   │       ├── requirements.md  # 要件定義
+│   │       ├── design.md        # 設計書
+│   │       └── tasks.md         # 実装タスク
+│   └── steering/             # 開発ガイドライン
+└── tmp/                      # 一時ファイル（Git管理外）
+```
 
-## Learn More
+## 🎨 デザインコンセプト
 
-To learn more about Next.js, take a look at the following resources:
+**"Immersive Industrial HUD"**
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+プロフェッショナルなヘッドアップディスプレイ（HUD）を模したUIデザイン。
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### カラーパレット
 
-## Deploy on Vercel
+| 用途 | 色 | Tailwind |
+|------|-----|----------|
+| 危険 | 🔴 Red | `#EF4444` |
+| 安全 | 🟢 Emerald | `#10B981` |
+| 警告 | 🟡 Amber | `#F59E0B` |
+| 情報 | 🔵 Sky | `#0EA5E9` |
+| 背景 | ⚫ Slate-950 | `#020617` |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🧪 テスト
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### インフラストラクチャテスト
+
+```bash
+cd infrastructure
+npm test
+```
+
+### フロントエンドテスト（実装予定）
+
+```bash
+npm test
+```
+
+## 📚 ドキュメント
+
+- [要件定義書](.kiro/specs/gijutsu-kyokuchou/requirements.md)
+- [設計書](.kiro/specs/gijutsu-kyokuchou/design.md)
+- [実装タスク](.kiro/specs/gijutsu-kyokuchou/tasks.md)
+- [インフラREADME](infrastructure/README.md)
+
+## 🛠️ 開発ワークフロー
+
+### Spec-Driven Development
+
+本プロジェクトは仕様駆動開発（Spec-Driven Development）を採用しています：
+
+1. **要件定義** → `requirements.md`
+2. **設計** → `design.md`
+3. **実装計画** → `tasks.md`
+4. **実装** → コード
+
+### Git コミットルール
+
+- コミットメッセージは日本語で記述
+- 簡潔な一行サマリー
+- 例: `S3のライフサイクルポリシーを3日に設定`
+
+## 🔐 セキュリティ
+
+- HTTPS通信のみ
+- S3パブリックアクセスブロック
+- 署名付きURLによる安全なアップロード
+- IAM最小権限の原則
+
+## 💰 コスト最適化
+
+- S3ライフサイクルポリシー（3日後に自動削除）
+- DynamoDB TTL（3日後に自動削除）
+- Lambda関数のタイムアウト最適化（30秒）
+- PAY_PER_REQUESTビリングモード
+
+## 🚧 今後の展開
+
+### Phase 2: リアルタイム動画解析
+- フレーム単位での解析
+- ライブカメラフィード対応
+
+### Phase 3: VR/AR統合
+- スマートグラス対応
+- 空間コンピューティング
+
+### 機能拡張
+- 特定機器のマニュアル統合（RAG）
+- 多言語対応
+- ユーザー認証（AWS Cognito）
+
+## 👥 チーム
+
+**MBS Hackathon 2026 - C班**
+
+## 📄 ライセンス
+
+Copyright © 2026 Mainichi Broadcasting System, Inc.
+
+## 🙏 謝辞
+
+- AWS Bedrock (Claude 3.5 Sonnet)
+- Next.js
+- AWS CDK
+- Tailwind CSS
