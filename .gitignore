@@ -42,3 +42,6 @@ next-env.d.ts
 
 # temporary files and test artifacts
 /tmp/
+
+# deployment artifacts
+deployment.zip
