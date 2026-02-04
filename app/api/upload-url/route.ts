@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     const { contentType } = await request.json();
     
     // 環境変数チェック
-    if (!process.env.AWS_REGION || !process.env.S3_BUCKET_NAME) {
+    if (!process.env.NEXT_PUBLIC_REGION || !process.env.NEXT_PUBLIC_S3_BUCKET_NAME) {
       return NextResponse.json(
         { error: 'AWS設定が不足しています' },
         { status: 500 }
@@ -28,16 +28,16 @@ export async function POST(request: NextRequest) {
     
     // S3クライアントの初期化
     const s3Client = new S3Client({
-      region: process.env.AWS_REGION,
-      credentials: process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY ? {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+      region: process.env.NEXT_PUBLIC_REGION,
+      credentials: process.env.ACCESS_KEY_ID && process.env.SECRET_ACCESS_KEY ? {
+        accessKeyId: process.env.ACCESS_KEY_ID,
+        secretAccessKey: process.env.SECRET_ACCESS_KEY
       } : undefined
     });
     
     // 署名付きURLの生成
     const command = new PutObjectCommand({
-      Bucket: process.env.S3_BUCKET_NAME,
+      Bucket: process.env.NEXT_PUBLIC_S3_BUCKET_NAME,
       Key: key,
       ContentType: contentType
     });

@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     }
     
     // 環境変数チェック
-    if (!process.env.AWS_REGION || !process.env.DYNAMODB_TABLE_NAME) {
+    if (!process.env.NEXT_PUBLIC_REGION || !process.env.DYNAMODB_TABLE_NAME) {
       return NextResponse.json(
         { error: 'AWS設定が不足しています' },
         { status: 500 }
@@ -28,10 +28,10 @@ export async function GET(request: NextRequest) {
     
     // DynamoDBクライアントの初期化
     const dynamoClient = new DynamoDBClient({
-      region: process.env.AWS_REGION,
-      credentials: process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY ? {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+      region: process.env.NEXT_PUBLIC_REGION,
+      credentials: process.env.ACCESS_KEY_ID && process.env.SECRET_ACCESS_KEY ? {
+        accessKeyId: process.env.ACCESS_KEY_ID,
+        secretAccessKey: process.env.SECRET_ACCESS_KEY
       } : undefined
     });
     
