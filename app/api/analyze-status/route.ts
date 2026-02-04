@@ -19,17 +19,13 @@ export async function GET(request: NextRequest) {
     }
     
     // 環境変数の取得
-    const region = process.env.NEXT_PUBLIC_REGION;
+    const region = process.env.NEXT_PUBLIC_REGION || process.env.AWS_REGION || 'us-east-1';
     const tableName = process.env.DYNAMODB_TABLE_NAME;
-    const accessKeyId = process.env.ACCESS_KEY_ID;
-    const secretAccessKey = process.env.SECRET_ACCESS_KEY;
     
     // 環境変数チェック
     console.log('環境変数チェック:', {
       region: region ? '設定済み' : '未設定',
-      tableName: tableName ? '設定済み' : '未設定',
-      accessKeyId: accessKeyId ? '設定済み' : '未設定',
-      secretAccessKey: secretAccessKey ? '設定済み' : '未設定'
+      tableName: tableName ? '設定済み' : '未設定'
     });
     
     if (!region || !tableName) {
@@ -40,21 +36,9 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    if (!accessKeyId || !secretAccessKey) {
-      console.error('AWS認証情報エラー');
-      return NextResponse.json(
-        { error: 'AWS認証情報が不足しています' },
-        { status: 500 }
-      );
-    }
-    
-    // DynamoDBクライアントの初期化
+    // DynamoDBクライアントの初期化（認証情報は環境から自動取得）
     const dynamoClient = new DynamoDBClient({
-      region: region,
-      credentials: {
-        accessKeyId: accessKeyId,
-        secretAccessKey: secretAccessKey
-      }
+      region: region
     });
     
     // DynamoDBから分析結果を取得

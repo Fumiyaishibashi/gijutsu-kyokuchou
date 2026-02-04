@@ -12,31 +12,19 @@ export async function POST(request: NextRequest) {
     const { contentType } = await request.json();
     
     // 環境変数の取得
-    const region = process.env.NEXT_PUBLIC_REGION;
+    const region = process.env.NEXT_PUBLIC_REGION || process.env.AWS_REGION || 'us-east-1';
     const bucketName = process.env.NEXT_PUBLIC_S3_BUCKET_NAME;
-    const accessKeyId = process.env.ACCESS_KEY_ID;
-    const secretAccessKey = process.env.SECRET_ACCESS_KEY;
     
     // 環境変数チェック
     console.log('環境変数チェック:', {
       region: region ? '設定済み' : '未設定',
-      bucketName: bucketName ? '設定済み' : '未設定',
-      accessKeyId: accessKeyId ? '設定済み' : '未設定',
-      secretAccessKey: secretAccessKey ? '設定済み' : '未設定'
+      bucketName: bucketName ? '設定済み' : '未設定'
     });
     
     if (!region || !bucketName) {
       console.error('AWS設定エラー:', { region, bucketName });
       return NextResponse.json(
         { error: 'AWS設定が不足しています（リージョンまたはバケット名）' },
-        { status: 500 }
-      );
-    }
-    
-    if (!accessKeyId || !secretAccessKey) {
-      console.error('AWS認証情報エラー');
-      return NextResponse.json(
-        { error: 'AWS認証情報が不足しています' },
         { status: 500 }
       );
     }
@@ -48,13 +36,9 @@ export async function POST(request: NextRequest) {
                      contentType === 'image/webp' ? 'webp' : 'jpg';
     const key = `uploads/${timestamp}-${uuid}.${extension}`;
     
-    // S3クライアントの初期化
+    // S3クライアントの初期化（認証情報は環境から自動取得）
     const s3Client = new S3Client({
-      region: region,
-      credentials: {
-        accessKeyId: accessKeyId,
-        secretAccessKey: secretAccessKey
-      }
+      region: region
     });
     
     // 署名付きURLの生成
