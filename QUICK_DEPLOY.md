@@ -19,11 +19,10 @@
 
 ### ステップ1: GitHubリポジトリの作成
 
-1. GitHubにログイン
+1. GitHubにログイン（FumiyaIshibashiアカウント）
 2. 新しいリポジトリを作成
-   - Organization: `Mainichi-Broadcasting-System-Inc`
    - Repository name: `gijutsu-kyokuchou`
-   - Visibility: Private（推奨）
+   - Visibility: Public または Private
 3. リポジトリをクローンせず、既存のコードをプッシュ
 
 ```bash
@@ -33,8 +32,8 @@ cd gijutsu-kyokuchou
 git remote -v
 
 # リモートURLが正しいか確認
-# origin  https://github.com/Mainichi-Broadcasting-System-Inc/gijutsu-kyokuchou.git (fetch)
-# origin  https://github.com/Mainichi-Broadcasting-System-Inc/gijutsu-kyokuchou.git (push)
+# origin  https://github.com/FumiyaIshibashi/gijutsu-kyokuchou.git (fetch)
+# origin  https://github.com/FumiyaIshibashi/gijutsu-kyokuchou.git (push)
 
 # プッシュ
 git push -u origin main
@@ -110,7 +109,7 @@ GijutsuKyokuchouStack.FunctionArn = arn:aws:lambda:us-east-1:727598134232:functi
 1. AWS Management Consoleで Amplify Hostingを開く
 2. 「新しいアプリ」→「ホストウェブアプリ」をクリック
 3. GitHubを選択
-4. リポジトリを選択: `Mainichi-Broadcasting-System-Inc/gijutsu-kyokuchou`
+4. リポジトリを選択: `FumiyaIshibashi/gijutsu-kyokuchou`
 5. ブランチを選択: `main`
 6. アプリ名: `gijutsu-kyokuchou-cteam`
 7. ビルド設定を確認（`amplify.yml`が自動検出される）

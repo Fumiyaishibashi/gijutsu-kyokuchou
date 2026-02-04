@@ -57,7 +57,7 @@
 #### 1. リポジトリのクローン
 
 ```bash
-git clone https://github.com/Mainichi-Broadcasting-System-Inc/gijutsu-kyokuchou.git
+git clone https://github.com/FumiyaIshibashi/gijutsu-kyokuchou.git
 cd gijutsu-kyokuchou
 ```
 

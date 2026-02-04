@@ -192,7 +192,7 @@ aws dynamodb get-item \
 git remote -v
 
 # リモートリポジトリが設定されていない場合
-git remote add origin https://github.com/Mainichi-Broadcasting-System-Inc/gijutsu-kyokuchou.git
+git remote add origin https://github.com/FumiyaIshibashi/gijutsu-kyokuchou.git
 
 # プッシュ
 git push -u origin main

@@ -18,7 +18,7 @@
 
 1. 「新しいアプリ」→「ホストウェブアプリ」をクリック
 2. GitHubを選択
-3. リポジトリを選択: `Mainichi-Broadcasting-System-Inc/gijutsu-kyokuchou`
+3. リポジトリを選択: `FumiyaIshibashi/gijutsu-kyokuchou`
 4. ブランチを選択: `main`
 5. アプリ名: `gijutsu-kyokuchou-cteam`
 
