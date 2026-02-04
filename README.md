@@ -52,14 +52,16 @@
 - AWS CLI設定済み
 - AWS Bedrockへのアクセス権限
 
-### 1. リポジトリのクローン
+### ローカル開発
+
+#### 1. リポジトリのクローン
 
 ```bash
 git clone https://github.com/Mainichi-Broadcasting-System-Inc/gijutsu-kyokuchou.git
 cd gijutsu-kyokuchou
 ```
 
-### 2. 依存関係のインストール
+#### 2. 依存関係のインストール
 
 ```bash
 # フロントエンド
@@ -71,7 +73,7 @@ npm install
 cd ..
 ```
 
-### 3. 環境変数の設定
+#### 3. 環境変数の設定
 
 `.env.local`ファイルを作成し、以下の内容を設定：
 
@@ -93,24 +95,36 @@ BEDROCK_REGION=us-east-1
 BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20241022-v2:0
 ```
 
-### 4. インフラストラクチャのデプロイ
-
-```bash
-cd infrastructure
-npx cdk bootstrap aws://727598134232/us-east-1  # 初回のみ
-npx cdk deploy
-cd ..
-```
-
-詳細は[infrastructure/README.md](infrastructure/README.md)を参照してください。
-
-### 5. 開発サーバーの起動
+#### 4. 開発サーバーの起動
 
 ```bash
 npm run dev
 ```
 
 ブラウザで http://localhost:3000 を開きます。
+
+### 本番デプロイ
+
+詳細なデプロイ手順は以下のドキュメントを参照してください：
+
+- **クイックデプロイ**: [QUICK_DEPLOY.md](QUICK_DEPLOY.md) - 5ステップで本番環境にデプロイ
+- **詳細デプロイ**: [DEPLOYMENT.md](DEPLOYMENT.md) - 詳細なデプロイ手順とトラブルシューティング
+- **Amplify設定**: [AMPLIFY_SETUP.md](AMPLIFY_SETUP.md) - AWS Amplify Hostingの設定
+
+#### デプロイ概要
+
+1. **GitHubリポジトリの作成**
+2. **AWS認証情報の設定**
+3. **CDKスタックのデプロイ**
+   ```bash
+   cd infrastructure
+   npx cdk bootstrap aws://727598134232/us-east-1
+   npx cdk deploy
+   ```
+4. **Bedrockモデルアクセスの有効化**
+5. **Amplify Hostingのセットアップ**
+
+所要時間: 約30-45分
 
 ## 📁 プロジェクト構成
 
@@ -171,10 +185,17 @@ npm test
 
 ## 📚 ドキュメント
 
-- [要件定義書](.kiro/specs/gijutsu-kyokuchou/requirements.md)
-- [設計書](.kiro/specs/gijutsu-kyokuchou/design.md)
-- [実装タスク](.kiro/specs/gijutsu-kyokuchou/tasks.md)
-- [インフラREADME](infrastructure/README.md)
+### 開発ドキュメント
+- [開発ガイド](DEVELOPMENT.md) - ローカル開発環境のセットアップと使い方
+- [要件定義書](.kiro/specs/gijutsu-kyokuchou/requirements.md) - 機能要件と非機能要件
+- [設計書](.kiro/specs/gijutsu-kyokuchou/design.md) - システムアーキテクチャと設計
+- [実装タスク](.kiro/specs/gijutsu-kyokuchou/tasks.md) - 実装タスクリスト
+
+### デプロイドキュメント
+- [クイックデプロイ](QUICK_DEPLOY.md) - 5ステップで本番環境にデプロイ（推奨）
+- [詳細デプロイ](DEPLOYMENT.md) - 詳細なデプロイ手順とトラブルシューティング
+- [Amplify設定](AMPLIFY_SETUP.md) - AWS Amplify Hostingの詳細設定
+- [インフラREADME](infrastructure/README.md) - AWS CDKインフラストラクチャの詳細
 
 ## 🛠️ 開発ワークフロー
 
