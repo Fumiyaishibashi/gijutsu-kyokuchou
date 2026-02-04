@@ -61,7 +61,7 @@ export class GijutsuKyokuchouStack extends cdk.Stack {
       environment: {
         RESULTS_TABLE_NAME: resultsTable.tableName,
         BEDROCK_REGION: 'us-east-1',
-        BEDROCK_MODEL_ID: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0'
+        BEDROCK_MODEL_ID: 'us.anthropic.claude-sonnet-4-5-20250514-v1:0'
       }
     });
 
@@ -69,7 +69,9 @@ export class GijutsuKyokuchouStack extends cdk.Stack {
     analyzerFunction.addToRolePolicy(new iam.PolicyStatement({
       actions: ['bedrock:InvokeModel'],
       resources: [
-        `arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-*`,
+        // Foundation Modelへのアクセス（全リージョン対応）
+        'arn:aws:bedrock:*::foundation-model/anthropic.claude-*',
+        // Inference Profileへのアクセス（全リージョン対応）
         'arn:aws:bedrock:*:*:inference-profile/*'
       ]
     }));
