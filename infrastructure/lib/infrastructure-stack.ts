@@ -61,15 +61,16 @@ export class GijutsuKyokuchouStack extends cdk.Stack {
       environment: {
         RESULTS_TABLE_NAME: resultsTable.tableName,
         BEDROCK_REGION: 'us-east-1',
-        BEDROCK_MODEL_ID: 'anthropic.claude-3-5-sonnet-20241022-v2:0'
+        BEDROCK_MODEL_ID: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0'
       }
     });
 
-    // Lambda関数にBedrockアクセス権限を付与
+    // Lambda関数にBedrockアクセス権限を付与（inference profileとfoundation modelの両方）
     analyzerFunction.addToRolePolicy(new iam.PolicyStatement({
       actions: ['bedrock:InvokeModel'],
       resources: [
-        `arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0`
+        `arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-*`,
+        'arn:aws:bedrock:*:*:inference-profile/*'
       ]
     }));
 
