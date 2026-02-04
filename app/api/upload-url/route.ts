@@ -14,17 +14,21 @@ export async function POST(request: NextRequest) {
     // 環境変数の取得
     const region = process.env.NEXT_PUBLIC_REGION || process.env.AWS_REGION || 'us-east-1';
     const bucketName = process.env.NEXT_PUBLIC_S3_BUCKET_NAME;
+    const accessKeyId = process.env.ACCESS_KEY_ID;
+    const secretAccessKey = process.env.SECRET_ACCESS_KEY;
     
-    // 環境変数チェック
+    // 環境変数チェック（デバッグ用）
     console.log('環境変数チェック:', {
       region: region ? '設定済み' : '未設定',
-      bucketName: bucketName ? '設定済み' : '未設定'
+      bucketName: bucketName ? '設定済み' : '未設定',
+      accessKeyId: accessKeyId ? `設定済み(${accessKeyId.substring(0, 4)}...)` : '未設定',
+      secretAccessKey: secretAccessKey ? '設定済み' : '未設定'
     });
     
-    if (!region || !bucketName) {
-      console.error('AWS設定エラー:', { region, bucketName });
+    if (!region || !bucketName || !accessKeyId || !secretAccessKey) {
+      console.error('AWS設定エラー:', { region, bucketName, accessKeyId: accessKeyId ? 'あり' : 'なし', secretAccessKey: secretAccessKey ? 'あり' : 'なし' });
       return NextResponse.json(
-        { error: 'AWS設定が不足しています（リージョンまたはバケット名）' },
+        { error: 'AWS設定が不足しています（リージョン、バケット名、または認証情報）' },
         { status: 500 }
       );
     }
@@ -40,8 +44,8 @@ export async function POST(request: NextRequest) {
     const s3Client = new S3Client({
       region: region,
       credentials: {
-        accessKeyId: process.env.ACCESS_KEY_ID!,
-        secretAccessKey: process.env.SECRET_ACCESS_KEY!
+        accessKeyId: accessKeyId,
+        secretAccessKey: secretAccessKey
       }
     });
     
