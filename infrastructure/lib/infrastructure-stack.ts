@@ -61,7 +61,7 @@ export class GijutsuKyokuchouStack extends cdk.Stack {
       environment: {
         RESULTS_TABLE_NAME: resultsTable.tableName,
         BEDROCK_REGION: 'us-east-1',
-        BEDROCK_MODEL_ID: 'us.anthropic.claude-sonnet-4-5-20250514-v1:0'
+        BEDROCK_MODEL_ID: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
       }
     });
 
