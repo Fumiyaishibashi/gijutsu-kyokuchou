@@ -11,10 +11,32 @@ export async function POST(request: NextRequest) {
   try {
     const { contentType } = await request.json();
     
+    // 環境変数の取得
+    const region = process.env.NEXT_PUBLIC_REGION;
+    const bucketName = process.env.NEXT_PUBLIC_S3_BUCKET_NAME;
+    const accessKeyId = process.env.ACCESS_KEY_ID;
+    const secretAccessKey = process.env.SECRET_ACCESS_KEY;
+    
     // 環境変数チェック
-    if (!process.env.NEXT_PUBLIC_REGION || !process.env.NEXT_PUBLIC_S3_BUCKET_NAME) {
+    console.log('環境変数チェック:', {
+      region: region ? '設定済み' : '未設定',
+      bucketName: bucketName ? '設定済み' : '未設定',
+      accessKeyId: accessKeyId ? '設定済み' : '未設定',
+      secretAccessKey: secretAccessKey ? '設定済み' : '未設定'
+    });
+    
+    if (!region || !bucketName) {
+      console.error('AWS設定エラー:', { region, bucketName });
       return NextResponse.json(
-        { error: 'AWS設定が不足しています' },
+        { error: 'AWS設定が不足しています（リージョンまたはバケット名）' },
+        { status: 500 }
+      );
+    }
+    
+    if (!accessKeyId || !secretAccessKey) {
+      console.error('AWS認証情報エラー');
+      return NextResponse.json(
+        { error: 'AWS認証情報が不足しています' },
         { status: 500 }
       );
     }
@@ -28,16 +50,16 @@ export async function POST(request: NextRequest) {
     
     // S3クライアントの初期化
     const s3Client = new S3Client({
-      region: process.env.NEXT_PUBLIC_REGION,
-      credentials: process.env.ACCESS_KEY_ID && process.env.SECRET_ACCESS_KEY ? {
-        accessKeyId: process.env.ACCESS_KEY_ID,
-        secretAccessKey: process.env.SECRET_ACCESS_KEY
-      } : undefined
+      region: region,
+      credentials: {
+        accessKeyId: accessKeyId,
+        secretAccessKey: secretAccessKey
+      }
     });
     
     // 署名付きURLの生成
     const command = new PutObjectCommand({
-      Bucket: process.env.NEXT_PUBLIC_S3_BUCKET_NAME,
+      Bucket: bucketName,
       Key: key,
       ContentType: contentType
     });
@@ -54,8 +76,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('署名付きURL生成エラー:', error);
+    const errorMessage = error instanceof Error ? error.message : '不明なエラー';
     return NextResponse.json(
-      { error: 'Failed to generate upload URL' },
+      { error: `署名付きURLの生成に失敗しました: ${errorMessage}` },
       { status: 500 }
     );
   }
