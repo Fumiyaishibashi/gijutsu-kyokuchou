@@ -36,9 +36,13 @@ export async function POST(request: NextRequest) {
                      contentType === 'image/webp' ? 'webp' : 'jpg';
     const key = `uploads/${timestamp}-${uuid}.${extension}`;
     
-    // S3クライアントの初期化（認証情報は環境から自動取得）
+    // S3クライアントの初期化（Amplify環境では明示的に認証情報を渡す必要がある）
     const s3Client = new S3Client({
-      region: region
+      region: region,
+      credentials: {
+        accessKeyId: process.env.ACCESS_KEY_ID!,
+        secretAccessKey: process.env.SECRET_ACCESS_KEY!
+      }
     });
     
     // 署名付きURLの生成
