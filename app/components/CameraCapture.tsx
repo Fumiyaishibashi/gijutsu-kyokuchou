@@ -2,6 +2,7 @@
 
 import { useRef, useCallback, useState } from 'react';
 import Webcam from 'react-webcam';
+import { compressImage, base64ToBlob } from '../lib/imageCompression';
 
 interface CameraCaptureProps {
   onCapture: (imageBlob: Blob) => void;
@@ -28,20 +29,22 @@ export default function CameraCapture({ onCapture, onError }: CameraCaptureProps
     setHasPermission(true);
   }, []);
 
-  // 写真撮影
-  const capture = useCallback(() => {
+  // 写真撮影（圧縮処理を追加）
+  const capture = useCallback(async () => {
     const imageSrc = webcamRef.current?.getScreenshot();
     if (imageSrc) {
-      // Base64をBlobに変換
-      fetch(imageSrc)
-        .then(res => res.blob())
-        .then(blob => {
-          onCapture(blob);
-        })
-        .catch(error => {
-          console.error('画像変換エラー:', error);
-          onError(error);
-        });
+      try {
+        // Base64をBlobに変換
+        const blob = base64ToBlob(imageSrc);
+        
+        // 画像を圧縮（5MB制限対応）
+        const compressedBlob = await compressImage(blob);
+        
+        onCapture(compressedBlob);
+      } catch (error) {
+        console.error('画像変換・圧縮エラー:', error);
+        onError(error as Error);
+      }
     }
   }, [onCapture, onError]);
 

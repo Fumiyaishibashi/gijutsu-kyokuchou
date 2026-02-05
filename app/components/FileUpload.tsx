@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import { compressImage } from '../lib/imageCompression';
 
 interface FileUploadProps {
   onFileSelect: (file: File) => void;
@@ -53,13 +54,23 @@ export default function FileUpload({
     }
   }, [maxSizeBytes]);
 
-  // ファイル選択ハンドラ
-  const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+  // ファイル選択ハンドラ（圧縮処理を追加）
+  const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       try {
         validateFile(file);
-        onFileSelect(file);
+        
+        // 画像を圧縮（5MB制限対応）
+        const compressedBlob = await compressImage(file);
+        
+        // BlobをFileに変換
+        const compressedFile = new File([compressedBlob], file.name, {
+          type: 'image/jpeg',
+          lastModified: Date.now(),
+        });
+        
+        onFileSelect(compressedFile);
       } catch (error) {
         onError(error as Error);
       }
@@ -77,7 +88,8 @@ export default function FileUpload({
     setIsDragging(false);
   }, []);
 
-  const handleDrop = useCallback((event: React.DragEvent) => {
+  // ドラッグ&ドロップハンドラ（圧縮処理を追加）
+  const handleDrop = useCallback(async (event: React.DragEvent) => {
     event.preventDefault();
     setIsDragging(false);
     
@@ -85,7 +97,17 @@ export default function FileUpload({
     if (file) {
       try {
         validateFile(file);
-        onFileSelect(file);
+        
+        // 画像を圧縮（5MB制限対応）
+        const compressedBlob = await compressImage(file);
+        
+        // BlobをFileに変換
+        const compressedFile = new File([compressedBlob], file.name, {
+          type: 'image/jpeg',
+          lastModified: Date.now(),
+        });
+        
+        onFileSelect(compressedFile);
       } catch (error) {
         onError(error as Error);
       }
