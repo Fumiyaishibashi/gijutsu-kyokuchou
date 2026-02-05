@@ -402,14 +402,14 @@ def build_equipment_identification_prompt(detected_objects: List[Dict[str, Any]]
     {{
       "source": "rekognition",
       "object_index": 物体のインデックス（0から始まる整数）,
-      "name": "機器名（日本語）",
+      "name": "具体的な製品名（メーカー名・型番を含む、日本語）",
       "risk_level": "SAFE | WARNING | DANGER | UNKNOWN",
-      "description": "簡潔な説明（50文字以内、日本語）",
+      "description": "機器の用途や特徴（50文字以内、日本語）",
       "manual_url": "公式マニュアルのURL（存在する場合のみ）"
     }},
     {{
       "source": "claude",
-      "name": "機器名（日本語）",
+      "name": "具体的な製品名（メーカー名・型番を含む、日本語）",
       "bbox": {{
         "x": X座標（パーセンテージ 0-100）,
         "y": Y座標（パーセンテージ 0-100）,
@@ -417,11 +417,19 @@ def build_equipment_identification_prompt(detected_objects: List[Dict[str, Any]]
         "height": 高さ（パーセンテージ 0-100）
       }},
       "risk_level": "SAFE | WARNING | DANGER | UNKNOWN",
-      "description": "簡潔な説明（50文字以内、日本語）",
+      "description": "機器の用途や特徴（50文字以内、日本語）",
       "manual_url": "公式マニュアルのURL（存在する場合のみ）"
     }}
   ]
 }}
+
+**重要: nameとdescriptionの使い分け**
+- **name**: 具体的な製品名（例: "HHKB Professional HYBRIDキーボード", "Sony PVM-A250モニター"）
+  - メーカー名や型番を必ず含める
+  - 一般名詞（キーボード、モニターなど）も含めてOK
+- **description**: 機器の用途や特徴（例: "放送制御や編集に使用する入力機器", "業務用ディスプレイ"）
+  - 製品名は含めない
+  - 用途や特徴を簡潔に説明
 
 リスクレベルの判定基準：
 - DANGER: 高電圧機器、触ると危険なもの、本番系スイッチャー
