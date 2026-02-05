@@ -56,7 +56,7 @@ export class GijutsuKyokuchouStack extends cdk.Stack {
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: 'handler.lambda_handler',
       code: lambda.Code.fromAsset('../lambda/image_analyzer'),
-      timeout: cdk.Duration.seconds(30),
+      timeout: cdk.Duration.seconds(60),  // 2段階Claude分析のため60秒に延長
       memorySize: 1024,
       environment: {
         RESULTS_TABLE_NAME: resultsTable.tableName,

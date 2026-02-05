@@ -76,6 +76,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         分析結果のJSON
     """
     try:
+        start_time = datetime.now()
         logger.info(f"イベント受信: {json.dumps(event)}")
         
         # S3イベントから画像情報を取得
@@ -83,38 +84,49 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info(f"画像取得: bucket={bucket}, key={key}")
         
         # S3から画像を取得
+        step_start = datetime.now()
         image_bytes = get_image_from_s3(bucket, key)
-        logger.info(f"画像サイズ: {len(image_bytes)} bytes")
+        logger.info(f"画像サイズ: {len(image_bytes)} bytes (所要時間: {(datetime.now() - step_start).total_seconds():.2f}秒)")
         
         # 画像をBase64エンコード
+        step_start = datetime.now()
         image_base64 = encode_image_to_base64(image_bytes)
+        logger.info(f"Base64エンコード完了 (所要時間: {(datetime.now() - step_start).total_seconds():.2f}秒)")
         
         # 【1段目】Rekognitionで物体検出
+        step_start = datetime.now()
         rekognition_result = detect_objects_with_rekognition(bucket, key)
-        logger.info(f"Rekognition検出: {len(rekognition_result)}個の物体")
+        logger.info(f"Rekognition検出: {len(rekognition_result)}個の物体 (所要時間: {(datetime.now() - step_start).total_seconds():.2f}秒)")
         
         # 【1段目】Claudeで機器識別とリスク判定
+        step_start = datetime.now()
         claude_result = analyze_equipment_with_claude(image_base64, rekognition_result)
-        logger.info(f"Claude識別: {len(claude_result.get('equipment', []))}個の機器")
+        logger.info(f"Claude識別: {len(claude_result.get('equipment', []))}個の機器 (所要時間: {(datetime.now() - step_start).total_seconds():.2f}秒)")
         
         # 【1段目】結果をマージ
+        step_start = datetime.now()
         equipment_list = merge_results(rekognition_result, claude_result)['equipment']
-        logger.info(f"1段目完了: {len(equipment_list)}個の機器を検出")
+        logger.info(f"1段目完了: {len(equipment_list)}個の機器を検出 (所要時間: {(datetime.now() - step_start).total_seconds():.2f}秒)")
         
         # 【2段目】バウンディングボックスを描画
+        step_start = datetime.now()
         annotated_image_bytes = draw_bounding_boxes(image_bytes, equipment_list)
         annotated_image_base64 = encode_image_to_base64(annotated_image_bytes)
-        logger.info("バウンディングボックス描画完了")
+        logger.info(f"バウンディングボックス描画完了 (所要時間: {(datetime.now() - step_start).total_seconds():.2f}秒)")
         
         # 【2段目】Claudeで位置調整
+        step_start = datetime.now()
         adjustments = refine_positions_with_claude(annotated_image_base64, equipment_list)
-        logger.info(f"位置調整情報取得: {len(adjustments.get('adjustments', []))}個")
+        logger.info(f"位置調整情報取得: {len(adjustments.get('adjustments', []))}個 (所要時間: {(datetime.now() - step_start).total_seconds():.2f}秒)")
         
         # 【2段目】位置調整を適用
+        step_start = datetime.now()
         final_equipment_list = apply_position_adjustments(equipment_list, adjustments)
+        logger.info(f"位置調整適用完了 (所要時間: {(datetime.now() - step_start).total_seconds():.2f}秒)")
         
         final_result = {'equipment': final_equipment_list}
-        logger.info(f"分析完了: {len(final_equipment_list)}個の機器を検出")
+        total_time = (datetime.now() - start_time).total_seconds()
+        logger.info(f"分析完了: {len(final_equipment_list)}個の機器を検出 (合計所要時間: {total_time:.2f}秒)")
         
         # DynamoDBに結果を保存
         save_result_to_dynamodb(key, final_result)
