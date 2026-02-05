@@ -19,6 +19,7 @@ export interface Equipment {
   bbox: BoundingBox;
   risk_level: RiskLevel;
   description: string;
+  manual_url?: string;  // 公式マニュアルのURL（オプション）
 }
 
 // 分析結果

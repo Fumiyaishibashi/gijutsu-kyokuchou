@@ -280,7 +280,8 @@ def build_analysis_prompt() -> str:
         "height": 高さ（パーセンテージ 0-100）
       },
       "risk_level": "SAFE | WARNING | DANGER | UNKNOWN",
-      "description": "簡潔な説明（50文字以内、日本語）"
+      "description": "簡潔な説明（50文字以内、日本語）",
+      "manual_url": "公式マニュアルのURL（存在する場合のみ）"
     }
   ]
 }
@@ -298,6 +299,7 @@ def build_analysis_prompt() -> str:
 4. バウンディングボックスの座標は、画像の左上を(0,0)、右下を(100,100)とするパーセンテージで表現してください
 5. 説明は簡潔に、若手技術者が理解できる言葉で記載してください
 6. 画像に機器が写っていない場合は、空の配列を返してください
+7. **manual_url**: 機器の公式マニュアルやメーカーの製品ページのURLが分かる場合のみ含めてください（不明な場合は省略）
 
 JSON形式のみを返し、他の説明文は含めないでください。"""
 
@@ -338,7 +340,8 @@ def build_equipment_identification_prompt(detected_objects: List[Dict[str, Any]]
       "object_index": 物体のインデックス（0から始まる整数）,
       "name": "機器名（日本語）",
       "risk_level": "SAFE | WARNING | DANGER | UNKNOWN",
-      "description": "簡潔な説明（50文字以内、日本語）"
+      "description": "簡潔な説明（50文字以内、日本語）",
+      "manual_url": "公式マニュアルのURL（存在する場合のみ）"
     }},
     {{
       "source": "claude",
@@ -350,7 +353,8 @@ def build_equipment_identification_prompt(detected_objects: List[Dict[str, Any]]
         "height": 高さ（パーセンテージ 0-100）
       }},
       "risk_level": "SAFE | WARNING | DANGER | UNKNOWN",
-      "description": "簡潔な説明（50文字以内、日本語）"
+      "description": "簡潔な説明（50文字以内、日本語）",
+      "manual_url": "公式マニュアルのURL（存在する場合のみ）"
     }}
   ]
 }}
@@ -368,6 +372,7 @@ def build_equipment_identification_prompt(detected_objects: List[Dict[str, Any]]
 4. ケーブルの種類が判断できない場合は、"WARNING" を使用
 5. 少しでも不確実な場合は、安全側に倒して "WARNING" または "DANGER" を選択
 6. バウンディングボックスの座標は、画像の左上を(0,0)、右下を(100,100)とするパーセンテージで表現
+7. **manual_url**: 機器の公式マニュアルやメーカーの製品ページのURLが分かる場合のみ含めてください（不明な場合は省略）
 
 JSON形式のみを返し、他の説明文は含めないでください。"""
 
@@ -715,6 +720,7 @@ def merge_results(
                     'bbox': rekognition_obj['bbox'],  # Rekognitionの正確な座標
                     'risk_level': equipment['risk_level'],
                     'description': equipment['description'],
+                    'manual_url': equipment.get('manual_url'),  # 公式マニュアルURL
                     'confidence': rekognition_obj['confidence'],
                     'source': 'rekognition'
                 })
@@ -728,6 +734,7 @@ def merge_results(
                 'bbox': equipment['bbox'],  # Claudeの推測座標
                 'risk_level': equipment['risk_level'],
                 'description': equipment['description'],
+                'manual_url': equipment.get('manual_url'),  # 公式マニュアルURL
                 'confidence': 75.0,  # Claude検出の仮想信頼度
                 'source': 'claude'
             })
