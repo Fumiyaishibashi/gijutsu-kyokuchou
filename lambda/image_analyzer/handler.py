@@ -27,6 +27,7 @@ BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonne
 s3_client = None
 bedrock_runtime = None
 dynamodb = None
+rekognition_client = None
 
 
 def get_s3_client():
@@ -53,9 +54,17 @@ def get_dynamodb():
     return dynamodb
 
 
+def get_rekognition_client():
+    """Rekognitionクライアントを取得（遅延初期化）"""
+    global rekognition_client
+    if rekognition_client is None:
+        rekognition_client = boto3.client('rekognition')
+    return rekognition_client
+
+
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
-    S3イベントから画像を取得し、Bedrockで分析
+    S3イベントから画像を取得し、RekognitionとBedrockで分析
     
     Args:
         event: S3イベント通知
@@ -78,19 +87,27 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # 画像をBase64エンコード
         image_base64 = encode_image_to_base64(image_bytes)
         
-        # Bedrockで分析
-        result = analyze_with_bedrock(image_base64)
-        logger.info(f"分析完了: {len(result.get('equipment', []))}個の機器を検出")
+        # Rekognitionで物体検出
+        rekognition_result = detect_objects_with_rekognition(bucket, key)
+        logger.info(f"Rekognition検出: {len(rekognition_result)}個の物体")
+        
+        # Claudeで機器識別とリスク判定
+        claude_result = analyze_equipment_with_claude(image_base64, rekognition_result)
+        logger.info(f"Claude識別: {len(claude_result.get('equipment', []))}個の機器")
+        
+        # 結果をマージ
+        final_result = merge_results(rekognition_result, claude_result)
+        logger.info(f"分析完了: {len(final_result.get('equipment', []))}個の機器を検出")
         
         # DynamoDBに結果を保存
-        save_result_to_dynamodb(key, result)
+        save_result_to_dynamodb(key, final_result)
         
         return {
             'statusCode': 200,
             'body': json.dumps({
                 'message': '分析完了',
                 'imageKey': key,
-                'equipmentCount': len(result.get('equipment', []))
+                'equipmentCount': len(final_result.get('equipment', []))
             })
         }
         
@@ -164,6 +181,54 @@ def encode_image_to_base64(image_bytes: bytes) -> str:
     return base64.b64encode(image_bytes).decode('utf-8')
 
 
+def detect_objects_with_rekognition(bucket: str, key: str) -> List[Dict[str, Any]]:
+    """
+    AWS Rekognitionで物体検出を実行
+    
+    Args:
+        bucket: S3バケット名
+        key: S3オブジェクトキー
+    
+    Returns:
+        検出された物体のリスト（バウンディングボックス座標付き）
+    """
+    try:
+        rekognition = get_rekognition_client()
+        
+        response = rekognition.detect_labels(
+            Image={'S3Object': {'Bucket': bucket, 'Name': key}},
+            MaxLabels=30,  # 20 → 30に増やす
+            MinConfidence=50,  # 70 → 50に下げる（より多く検出）
+            Features=['GENERAL_LABELS']
+        )
+        
+        detected_objects = []
+        for label in response['Labels']:
+            # Instancesがある場合のみ（バウンディングボックス付き）
+            for instance in label.get('Instances', []):
+                bbox = instance['BoundingBox']
+                detected_objects.append({
+                    'label': label['Name'],
+                    'confidence': instance['Confidence'],
+                    'bbox': {
+                        'x': bbox['Left'] * 100,      # パーセンテージに変換
+                        'y': bbox['Top'] * 100,
+                        'width': bbox['Width'] * 100,
+                        'height': bbox['Height'] * 100
+                    }
+                })
+        
+        logger.info(f"Rekognition検出: {len(detected_objects)}個の物体")
+        return detected_objects
+        
+    except ClientError as e:
+        logger.error(f"Rekognition APIエラー: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Rekognition検出エラー: {e}")
+        raise
+
+
 def error_response(status_code: int, message: str) -> dict:
     """
     エラーレスポンスを生成
@@ -226,9 +291,58 @@ def build_analysis_prompt() -> str:
 JSON形式のみを返し、他の説明文は含めないでください。"""
 
 
+def build_equipment_identification_prompt(detected_objects: List[Dict[str, Any]]) -> str:
+    """
+    機器識別用のプロンプトを構築（Rekognition検出結果を使用）
+    
+    Args:
+        detected_objects: Rekognitionで検出された物体リスト
+    
+    Returns:
+        プロンプト文字列
+    """
+    objects_summary = "\n".join([
+        f"- 物体{i}: {obj['label']} (信頼度: {obj['confidence']:.1f}%)"
+        for i, obj in enumerate(detected_objects)
+    ])
+    
+    return f"""あなたは放送設備の専門家です。
+
+画像内に以下の物体が検出されました：
+{objects_summary}
+
+この画像を見て、各物体が放送機器かどうかを判定し、以下の情報を返してください：
+
+{{
+  "equipment": [
+    {{
+      "object_index": 物体のインデックス（0から始まる整数）,
+      "name": "機器名（日本語）",
+      "risk_level": "SAFE | WARNING | DANGER | UNKNOWN",
+      "description": "簡潔な説明（50文字以内、日本語）"
+    }}
+  ]
+}}
+
+リスクレベルの判定基準：
+- DANGER: 高電圧機器、触ると危険なもの、本番系スイッチャー
+- WARNING: 不明なケーブル、確認が必要なもの、識別できない機器
+- SAFE: 安全に触れるもの、電源オフのもの、低電圧機器
+- UNKNOWN: 機器を識別できない場合
+
+重要な注意事項（悲観的AI戦略）：
+1. 機器の種類が不明な場合は、推測せずに "UNKNOWN" を使用してください
+2. ケーブルの種類が判断できない場合は、"WARNING" を使用してください
+3. 少しでも不確実な場合は、安全側に倒して "WARNING" または "DANGER" を選択してください
+4. 放送機器ではない物体（椅子、机など）は除外してください
+5. object_indexは、上記の物体リストのインデックス（0から始まる）を指定してください
+
+JSON形式のみを返し、他の説明文は含めないでください。"""
+
+
 def analyze_with_bedrock(image_base64: str) -> Dict[str, Any]:
     """
-    Bedrockで画像を分析
+    Bedrockで画像を分析（旧バージョン - 座標も含む）
     
     Args:
         image_base64: Base64エンコードされた画像
@@ -286,9 +400,73 @@ def analyze_with_bedrock(image_base64: str) -> Dict[str, Any]:
         raise
 
 
+def analyze_equipment_with_claude(
+    image_base64: str, 
+    detected_objects: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """
+    Claudeで機器識別とリスク判定を実行（座標は使わない）
+    
+    Args:
+        image_base64: Base64エンコードされた画像
+        detected_objects: Rekognitionで検出された物体リスト
+    
+    Returns:
+        機器情報（名前、説明、リスクレベル、object_index）
+    """
+    try:
+        # プロンプトの構築
+        prompt = build_equipment_identification_prompt(detected_objects)
+        
+        # Bedrock APIコール
+        body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 2000,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": image_base64
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        logger.info("Claude機器識別APIを呼び出し中...")
+        bedrock = get_bedrock_runtime()
+        response = bedrock.invoke_model(
+            modelId=BEDROCK_MODEL_ID,
+            body=json.dumps(body)
+        )
+        
+        response_body = json.loads(response['body'].read())
+        logger.info(f"Claude応答: {json.dumps(response_body)}")
+        
+        # 応答を解析
+        return parse_claude_equipment_response(response_body)
+        
+    except ClientError as e:
+        logger.error(f"Claude APIエラー: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Claude機器識別エラー: {e}")
+        raise
+
+
 def parse_bedrock_response(response: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Bedrock応答を解析してバリデーション
+    Bedrock応答を解析してバリデーション（旧バージョン）
     
     Args:
         response: Bedrock API応答
@@ -356,6 +534,70 @@ def parse_bedrock_response(response: Dict[str, Any]) -> Dict[str, Any]:
         return {'equipment': []}
 
 
+def parse_claude_equipment_response(response: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Claude機器識別応答を解析してバリデーション
+    
+    Args:
+        response: Claude API応答
+    
+    Returns:
+        検証済みの機器識別結果
+    """
+    try:
+        # テキストコンテンツを取得
+        content = response['content'][0]['text']
+        logger.info(f"Claudeテキスト応答: {content}")
+        
+        # JSONを抽出（マークダウンコードブロックを除去）
+        if '```json' in content:
+            content = content.split('```json')[1].split('```')[0].strip()
+        elif '```' in content:
+            content = content.split('```')[1].split('```')[0].strip()
+        
+        # JSONをパース
+        result = json.loads(content)
+        
+        # スキーマ検証
+        if 'equipment' not in result:
+            logger.warning("equipment配列が見つかりません")
+            return {'equipment': []}
+        
+        validated_equipment = []
+        for equipment in result['equipment']:
+            # 必須フィールドの検証
+            if not all(key in equipment for key in ['object_index', 'name', 'risk_level', 'description']):
+                logger.warning(f"必須フィールドが不足: {equipment}")
+                continue
+            
+            # object_indexの検証
+            if not isinstance(equipment['object_index'], int) or equipment['object_index'] < 0:
+                logger.warning(f"不正なobject_index: {equipment['object_index']}")
+                continue
+            
+            # リスクレベルの検証
+            if equipment['risk_level'] not in ['SAFE', 'WARNING', 'DANGER', 'UNKNOWN']:
+                logger.warning(f"不正なリスクレベル: {equipment['risk_level']}")
+                equipment['risk_level'] = 'UNKNOWN'
+            
+            # 説明の長さ検証（100文字以内）
+            if len(equipment['description']) > 100:
+                logger.warning(f"説明が長すぎます: {len(equipment['description'])}文字")
+                equipment['description'] = equipment['description'][:97] + '...'
+            
+            validated_equipment.append(equipment)
+        
+        return {'equipment': validated_equipment}
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON解析エラー: {e}")
+        logger.error(f"応答内容: {content}")
+        return {'equipment': []}
+    except Exception as e:
+        logger.error(f"応答解析エラー: {e}")
+        return {'equipment': []}
+
+
 def save_result_to_dynamodb(image_key: str, result: Dict[str, Any]) -> None:
     """
     分析結果をDynamoDBに保存
@@ -385,3 +627,40 @@ def save_result_to_dynamodb(image_key: str, result: Dict[str, Any]) -> None:
     except Exception as e:
         logger.error(f"DynamoDB保存エラー: {e}")
         raise
+
+
+def merge_results(
+    rekognition_result: List[Dict[str, Any]], 
+    claude_result: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    RekognitionとClaudeの結果をマージ
+    
+    Args:
+        rekognition_result: Rekognitionの検出結果（座標付き）
+        claude_result: Claudeの識別結果（機器情報）
+    
+    Returns:
+        マージされた最終結果
+    """
+    equipment_list = []
+    
+    for equipment in claude_result.get('equipment', []):
+        object_index = equipment.get('object_index')
+        
+        # 対応するRekognition結果を取得
+        if object_index is not None and 0 <= object_index < len(rekognition_result):
+            rekognition_obj = rekognition_result[object_index]
+            
+            equipment_list.append({
+                'name': equipment['name'],
+                'bbox': rekognition_obj['bbox'],  # Rekognitionの正確な座標
+                'risk_level': equipment['risk_level'],
+                'description': equipment['description'],
+                'confidence': rekognition_obj['confidence']
+            })
+        else:
+            logger.warning(f"object_indexが範囲外: {object_index} (最大: {len(rekognition_result)-1})")
+    
+    logger.info(f"結果マージ完了: {len(equipment_list)}個の機器")
+    return {'equipment': equipment_list}

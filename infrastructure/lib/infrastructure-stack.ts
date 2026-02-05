@@ -76,6 +76,12 @@ export class GijutsuKyokuchouStack extends cdk.Stack {
       ]
     }));
 
+    // Lambda関数にRekognitionアクセス権限を付与
+    analyzerFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['rekognition:DetectLabels'],
+      resources: ['*']  // Rekognitionはリソースレベルの権限をサポートしていない
+    }));
+
     // Lambda関数にS3読み取り権限を付与
     imageBucket.grantRead(analyzerFunction);
 

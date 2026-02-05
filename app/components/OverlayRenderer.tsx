@@ -19,34 +19,77 @@ export default function OverlayRenderer({
   equipment, 
   onEquipmentClick 
 }: OverlayRendererProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
-  const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
+  const [imageDisplay, setImageDisplay] = useState({ 
+    width: 0, 
+    height: 0,
+    offsetX: 0,
+    offsetY: 0
+  });
 
-  // 画像サイズの計算
-  const updateImageDimensions = useCallback(() => {
-    if (imageRef.current) {
-      setImageDimensions({
-        width: imageRef.current.clientWidth,
-        height: imageRef.current.clientHeight
+  // 画像の実際の表示サイズとオフセットを計算
+  const updateImageDisplay = useCallback(() => {
+    if (containerRef.current && imageRef.current) {
+      const container = containerRef.current;
+      const img = imageRef.current;
+      
+      // コンテナのサイズ
+      const containerWidth = container.clientWidth;
+      const containerHeight = container.clientHeight;
+      
+      // 画像の元のサイズ
+      const naturalWidth = img.naturalWidth;
+      const naturalHeight = img.naturalHeight;
+      
+      if (naturalWidth === 0 || naturalHeight === 0) {
+        return; // 画像がまだ読み込まれていない
+      }
+      
+      // アスペクト比を計算
+      const imageAspect = naturalWidth / naturalHeight;
+      const containerAspect = containerWidth / containerHeight;
+      
+      let displayWidth, displayHeight, offsetX, offsetY;
+      
+      if (imageAspect > containerAspect) {
+        // 画像が横長 → 幅に合わせる
+        displayWidth = containerWidth;
+        displayHeight = containerWidth / imageAspect;
+        offsetX = 0;
+        offsetY = (containerHeight - displayHeight) / 2;
+      } else {
+        // 画像が縦長 → 高さに合わせる
+        displayHeight = containerHeight;
+        displayWidth = containerHeight * imageAspect;
+        offsetX = (containerWidth - displayWidth) / 2;
+        offsetY = 0;
+      }
+      
+      setImageDisplay({
+        width: displayWidth,
+        height: displayHeight,
+        offsetX,
+        offsetY
       });
     }
   }, []);
 
   // 画像読み込み時とリサイズ時にサイズを更新
   useEffect(() => {
-    updateImageDimensions();
-    window.addEventListener('resize', updateImageDimensions);
-    return () => window.removeEventListener('resize', updateImageDimensions);
-  }, [updateImageDimensions]);
+    updateImageDisplay();
+    window.addEventListener('resize', updateImageDisplay);
+    return () => window.removeEventListener('resize', updateImageDisplay);
+  }, [updateImageDisplay]);
 
   // バウンディングボックスのスタイル計算
   const calculateBoundingBoxStyle = (equipment: Equipment): React.CSSProperties => {
     const { bbox } = equipment;
-    const { width, height } = imageDimensions;
+    const { width, height, offsetX, offsetY } = imageDisplay;
 
-    // パーセンテージをピクセルに変換
-    const left = (bbox.x / 100) * width;
-    const top = (bbox.y / 100) * height;
+    // パーセンテージをピクセルに変換（画像の実際の表示サイズ基準）
+    const left = offsetX + (bbox.x / 100) * width;
+    const top = offsetY + (bbox.y / 100) * height;
     const boxWidth = (bbox.width / 100) * width;
     const boxHeight = (bbox.height / 100) * height;
 
@@ -63,7 +106,10 @@ export default function OverlayRenderer({
   };
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center bg-slate-900">
+    <div 
+      ref={containerRef}
+      className="relative w-full h-full flex items-center justify-center bg-slate-900"
+    >
       {/* 画像 */}
       <div className="relative w-full h-full">
         <Image
@@ -72,12 +118,12 @@ export default function OverlayRenderer({
           alt="分析対象画像"
           fill
           className="object-contain"
-          onLoad={updateImageDimensions}
+          onLoad={updateImageDisplay}
           priority
         />
 
         {/* オーバーレイ */}
-        {imageDimensions.width > 0 && equipment.map((eq, index) => (
+        {imageDisplay.width > 0 && equipment.map((eq, index) => (
           <div key={index}>
             {/* バウンディングボックス */}
             <div
