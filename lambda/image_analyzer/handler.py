@@ -195,11 +195,11 @@ def detect_objects_with_rekognition(bucket: str, key: str) -> List[Dict[str, Any
     try:
         rekognition = get_rekognition_client()
         
-        # アプローチC: 検出感度を最大化（MinConfidence=30, MaxLabels=50）
+        # アプローチC: 検出感度を極限まで上げる（MinConfidence=15, MaxLabels=50）
         response = rekognition.detect_labels(
             Image={'S3Object': {'Bucket': bucket, 'Name': key}},
             MaxLabels=50,
-            MinConfidence=30,
+            MinConfidence=15,
             Features=['GENERAL_LABELS']
         )
         
