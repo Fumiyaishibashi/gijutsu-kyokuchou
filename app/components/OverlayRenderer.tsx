@@ -10,6 +10,8 @@ interface OverlayRendererProps {
   onEquipmentClick: (equipment: Equipment) => void;
 }
 
+type CalloutPosition = 'top' | 'right' | 'bottom' | 'left';
+
 /**
  * オーバーレイレンダラーコンポーネント
  * 画像上にバウンディングボックスと機器情報を表示
@@ -105,6 +107,94 @@ export default function OverlayRenderer({
     };
   };
 
+  // 吹き出しの最適な配置位置を計算
+  const calculateCalloutPosition = (equipment: Equipment): CalloutPosition => {
+    const { bbox } = equipment;
+    
+    // 画面端からの距離を計算（パーセンテージ）
+    const distanceFromTop = bbox.y;
+    const distanceFromBottom = 100 - (bbox.y + bbox.height);
+    const distanceFromLeft = bbox.x;
+    const distanceFromRight = 100 - (bbox.x + bbox.width);
+    
+    // 十分なスペース（30%以上）がある方向を優先
+    const spaceThreshold = 30;
+    
+    // 上部に十分なスペースがあれば上に配置（デフォルト）
+    if (distanceFromTop > spaceThreshold) {
+      return 'top';
+    }
+    
+    // 下部にスペースがあれば下に配置
+    if (distanceFromBottom > spaceThreshold) {
+      return 'bottom';
+    }
+    
+    // 左右で広い方に配置
+    if (distanceFromRight > distanceFromLeft && distanceFromRight > 20) {
+      return 'right';
+    }
+    
+    if (distanceFromLeft > 20) {
+      return 'left';
+    }
+    
+    // どこにもスペースがない場合は上に配置
+    return 'top';
+  };
+
+  // 吹き出しのスタイル計算
+  const calculateCalloutStyle = (
+    equipment: Equipment, 
+    position: CalloutPosition
+  ): React.CSSProperties => {
+    const { bbox } = equipment;
+    const { width, height, offsetX, offsetY } = imageDisplay;
+
+    // バウンディングボックスの中心座標
+    const centerX = offsetX + ((bbox.x + bbox.width / 2) / 100) * width;
+    const centerY = offsetY + ((bbox.y + bbox.height / 2) / 100) * height;
+    
+    // バウンディングボックスの端座標
+    const boxLeft = offsetX + (bbox.x / 100) * width;
+    const boxTop = offsetY + (bbox.y / 100) * height;
+    const boxRight = offsetX + ((bbox.x + bbox.width) / 100) * width;
+    const boxBottom = offsetY + ((bbox.y + bbox.height) / 100) * height;
+
+    const calloutOffset = 20; // 吹き出しとボックスの間隔
+
+    switch (position) {
+      case 'top':
+        return {
+          position: 'absolute',
+          left: `${centerX}px`,
+          top: `${boxTop - calloutOffset}px`,
+          transform: 'translate(-50%, -100%)',
+        };
+      case 'bottom':
+        return {
+          position: 'absolute',
+          left: `${centerX}px`,
+          top: `${boxBottom + calloutOffset}px`,
+          transform: 'translateX(-50%)',
+        };
+      case 'left':
+        return {
+          position: 'absolute',
+          left: `${boxLeft - calloutOffset}px`,
+          top: `${centerY}px`,
+          transform: 'translate(-100%, -50%)',
+        };
+      case 'right':
+        return {
+          position: 'absolute',
+          left: `${boxRight + calloutOffset}px`,
+          top: `${centerY}px`,
+          transform: 'translateY(-50%)',
+        };
+    }
+  };
+
   return (
     <div 
       ref={containerRef}
@@ -123,24 +213,95 @@ export default function OverlayRenderer({
         />
 
         {/* オーバーレイ */}
-        {imageDisplay.width > 0 && equipment.map((eq, index) => (
-          <div key={index}>
-            {/* バウンディングボックス */}
-            <div
-              style={calculateBoundingBoxStyle(eq)}
-              onClick={() => onEquipmentClick(eq)}
-              className="transition-all hover:opacity-80"
-            >
-              {/* 機器名ラベル */}
+        {imageDisplay.width > 0 && equipment.map((eq, index) => {
+          const position = calculateCalloutPosition(eq);
+          const color = RISK_COLORS[eq.risk_level];
+          
+          return (
+            <div key={index}>
+              {/* バウンディングボックス */}
               <div
-                className="absolute -top-8 left-0 px-2 py-1 bg-black/75 text-white text-sm font-medium rounded whitespace-nowrap"
-                style={{ color: RISK_COLORS[eq.risk_level] }}
+                style={calculateBoundingBoxStyle(eq)}
+                onClick={() => onEquipmentClick(eq)}
+                className="transition-all hover:opacity-80"
+              />
+
+              {/* 吹き出し */}
+              <div
+                style={calculateCalloutStyle(eq, position)}
+                onClick={() => onEquipmentClick(eq)}
+                className="pointer-events-auto cursor-pointer transition-all hover:scale-105 animate-in fade-in zoom-in duration-300"
               >
-                {eq.name}
+                <div 
+                  className="relative px-3 py-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg max-w-xs"
+                  style={{ borderLeft: `4px solid ${color}` }}
+                >
+                  {/* 機器名 */}
+                  <div 
+                    className="text-sm font-bold whitespace-nowrap"
+                    style={{ color }}
+                  >
+                    {eq.name}
+                  </div>
+                  
+                  {/* 説明文（あれば） */}
+                  {eq.description && (
+                    <div className="text-xs text-slate-300 mt-1 whitespace-normal">
+                      {eq.description}
+                    </div>
+                  )}
+
+                  {/* 三角形の「しっぽ」 */}
+                  <div
+                    className="absolute"
+                    style={{
+                      ...(position === 'top' && {
+                        bottom: '-8px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        width: 0,
+                        height: 0,
+                        borderLeft: '8px solid transparent',
+                        borderRight: '8px solid transparent',
+                        borderTop: '8px solid rgba(0, 0, 0, 0.9)',
+                      }),
+                      ...(position === 'bottom' && {
+                        top: '-8px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        width: 0,
+                        height: 0,
+                        borderLeft: '8px solid transparent',
+                        borderRight: '8px solid transparent',
+                        borderBottom: '8px solid rgba(0, 0, 0, 0.9)',
+                      }),
+                      ...(position === 'left' && {
+                        right: '-8px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: 0,
+                        height: 0,
+                        borderTop: '8px solid transparent',
+                        borderBottom: '8px solid transparent',
+                        borderLeft: '8px solid rgba(0, 0, 0, 0.9)',
+                      }),
+                      ...(position === 'right' && {
+                        left: '-8px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: 0,
+                        height: 0,
+                        borderTop: '8px solid transparent',
+                        borderBottom: '8px solid transparent',
+                        borderRight: '8px solid rgba(0, 0, 0, 0.9)',
+                      }),
+                    }}
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* 機器数表示 */}
