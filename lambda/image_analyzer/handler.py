@@ -195,6 +195,7 @@ def detect_objects_with_rekognition(bucket: str, key: str) -> List[Dict[str, Any
     try:
         rekognition = get_rekognition_client()
         
+        # アプローチB: 検出感度を上げる（MinConfidence=50, MaxLabels=30）
         response = rekognition.detect_labels(
             Image={'S3Object': {'Bucket': bucket, 'Name': key}},
             MaxLabels=30,  # 20 → 30に増やす
