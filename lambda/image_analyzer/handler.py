@@ -195,11 +195,11 @@ def detect_objects_with_rekognition(bucket: str, key: str) -> List[Dict[str, Any
     try:
         rekognition = get_rekognition_client()
         
-        # アプローチA: 標準的な検出感度（MinConfidence=70, MaxLabels=20）
+        # アプローチC: 検出感度を上げる（MinConfidence=50, MaxLabels=30）
         response = rekognition.detect_labels(
             Image={'S3Object': {'Bucket': bucket, 'Name': key}},
-            MaxLabels=20,
-            MinConfidence=70,
+            MaxLabels=30,
+            MinConfidence=50,
             Features=['GENERAL_LABELS']
         )
         
@@ -294,8 +294,8 @@ JSON形式のみを返し、他の説明文は含めないでください。"""
 
 def build_equipment_identification_prompt(detected_objects: List[Dict[str, Any]]) -> str:
     """
-    機器識別用のプロンプトを構築（Rekognition検出結果を使用）
-    アプローチA: 画像全体を見せて、Rekognitionの検出結果から放送機器を選別
+    機器識別用のプロンプトを構築（ハイブリッド方式）
+    アプローチC: Rekognition検出分の識別 + Claude追加検出
     
     Args:
         detected_objects: Rekognitionで検出された物体リスト
@@ -313,15 +313,32 @@ def build_equipment_identification_prompt(detected_objects: List[Dict[str, Any]]
 画像内に以下の物体が検出されました：
 {objects_summary}
 
-**重要**: この画像を見て、上記の検出結果の中から「放送機器」に該当するものだけを選別してください。
+**タスク1: 検出された物体の評価**
+上記の検出結果の中から「放送機器」に該当するものを選別してください。
 
-以下の情報を返してください：
+**タスク2: 追加の機器検出**
+画像全体を見て、上記のリストに含まれていない放送機器があれば、それも検出してください。
+
+以下のJSON形式で返してください：
 
 {{
   "equipment": [
     {{
+      "source": "rekognition",
       "object_index": 物体のインデックス（0から始まる整数）,
       "name": "機器名（日本語）",
+      "risk_level": "SAFE | WARNING | DANGER | UNKNOWN",
+      "description": "簡潔な説明（50文字以内、日本語）"
+    }},
+    {{
+      "source": "claude",
+      "name": "機器名（日本語）",
+      "bbox": {{
+        "x": X座標（パーセンテージ 0-100）,
+        "y": Y座標（パーセンテージ 0-100）,
+        "width": 幅（パーセンテージ 0-100）,
+        "height": 高さ（パーセンテージ 0-100）
+      }},
       "risk_level": "SAFE | WARNING | DANGER | UNKNOWN",
       "description": "簡潔な説明（50文字以内、日本語）"
     }}
@@ -335,13 +352,12 @@ def build_equipment_identification_prompt(detected_objects: List[Dict[str, Any]]
 - UNKNOWN: 機器を識別できない場合
 
 重要な注意事項（悲観的AI戦略）：
-1. **放送機器ではない物体（椅子、机、壁、床、人など）は必ず除外してください**
-2. 機器の種類が不明な場合は、推測せずに "UNKNOWN" を使用してください
-3. ケーブルの種類が判断できない場合は、"WARNING" を使用してください
-4. 少しでも不確実な場合は、安全側に倒して "WARNING" または "DANGER" を選択してください
-5. object_indexは、上記の物体リストのインデックス（0から始まる）を指定してください
-6. **画像全体を見て、検出された物体が本当に放送機器かどうかを判断してください**
-7. **検出漏れがある場合（画像に写っているが検出されていない放送機器）は、無視してください**
+1. **source="rekognition"**: 上記リストの物体が放送機器の場合のみ含める。放送機器でない物体（椅子、机、壁、床、人など）は除外
+2. **source="claude"**: 上記リストに含まれていない放送機器を追加検出。座標も含める
+3. 機器の種類が不明な場合は、推測せずに "UNKNOWN" を使用
+4. ケーブルの種類が判断できない場合は、"WARNING" を使用
+5. 少しでも不確実な場合は、安全側に倒して "WARNING" または "DANGER" を選択
+6. バウンディングボックスの座標は、画像の左上を(0,0)、右下を(100,100)とするパーセンテージで表現
 
 JSON形式のみを返し、他の説明文は含めないでください。"""
 
@@ -542,7 +558,7 @@ def parse_bedrock_response(response: Dict[str, Any]) -> Dict[str, Any]:
 
 def parse_claude_equipment_response(response: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Claude機器識別応答を解析してバリデーション
+    Claude機器識別応答を解析してバリデーション（ハイブリッド方式対応）
     
     Args:
         response: Claude API応答
@@ -571,14 +587,37 @@ def parse_claude_equipment_response(response: Dict[str, Any]) -> Dict[str, Any]:
         
         validated_equipment = []
         for equipment in result['equipment']:
-            # 必須フィールドの検証
-            if not all(key in equipment for key in ['object_index', 'name', 'risk_level', 'description']):
-                logger.warning(f"必須フィールドが不足: {equipment}")
-                continue
+            source = equipment.get('source', 'rekognition')  # デフォルトはrekognition
             
-            # object_indexの検証
-            if not isinstance(equipment['object_index'], int) or equipment['object_index'] < 0:
-                logger.warning(f"不正なobject_index: {equipment['object_index']}")
+            if source == 'rekognition':
+                # Rekognition検出分: object_indexが必須
+                if not all(key in equipment for key in ['object_index', 'name', 'risk_level', 'description']):
+                    logger.warning(f"必須フィールドが不足（rekognition）: {equipment}")
+                    continue
+                
+                # object_indexの検証
+                if not isinstance(equipment['object_index'], int) or equipment['object_index'] < 0:
+                    logger.warning(f"不正なobject_index: {equipment['object_index']}")
+                    continue
+                
+            elif source == 'claude':
+                # Claude追加検出分: bboxが必須
+                if not all(key in equipment for key in ['name', 'bbox', 'risk_level', 'description']):
+                    logger.warning(f"必須フィールドが不足（claude）: {equipment}")
+                    continue
+                
+                # バウンディングボックスの検証
+                bbox = equipment['bbox']
+                if not all(key in bbox for key in ['x', 'y', 'width', 'height']):
+                    logger.warning(f"バウンディングボックスが不正: {bbox}")
+                    continue
+                
+                # 座標範囲の検証（0-100）
+                if not all(0 <= bbox[key] <= 100 for key in ['x', 'y', 'width', 'height']):
+                    logger.warning(f"座標が範囲外: {bbox}")
+                    continue
+            else:
+                logger.warning(f"不正なsource: {source}")
                 continue
             
             # リスクレベルの検証
@@ -640,11 +679,11 @@ def merge_results(
     claude_result: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
-    RekognitionとClaudeの結果をマージ
+    RekognitionとClaudeの結果をマージ（ハイブリッド方式）
     
     Args:
         rekognition_result: Rekognitionの検出結果（座標付き）
-        claude_result: Claudeの識別結果（機器情報）
+        claude_result: Claudeの識別結果（機器情報 + 追加検出）
     
     Returns:
         マージされた最終結果
@@ -652,21 +691,36 @@ def merge_results(
     equipment_list = []
     
     for equipment in claude_result.get('equipment', []):
-        object_index = equipment.get('object_index')
+        source = equipment.get('source', 'rekognition')
         
-        # 対応するRekognition結果を取得
-        if object_index is not None and 0 <= object_index < len(rekognition_result):
-            rekognition_obj = rekognition_result[object_index]
+        if source == 'rekognition':
+            # Rekognition検出分: Rekognitionの正確な座標を使用
+            object_index = equipment.get('object_index')
             
+            if object_index is not None and 0 <= object_index < len(rekognition_result):
+                rekognition_obj = rekognition_result[object_index]
+                
+                equipment_list.append({
+                    'name': equipment['name'],
+                    'bbox': rekognition_obj['bbox'],  # Rekognitionの正確な座標
+                    'risk_level': equipment['risk_level'],
+                    'description': equipment['description'],
+                    'confidence': rekognition_obj['confidence'],
+                    'source': 'rekognition'
+                })
+            else:
+                logger.warning(f"object_indexが範囲外: {object_index} (最大: {len(rekognition_result)-1})")
+        
+        elif source == 'claude':
+            # Claude追加検出分: Claudeの座標を使用
             equipment_list.append({
                 'name': equipment['name'],
-                'bbox': rekognition_obj['bbox'],  # Rekognitionの正確な座標
+                'bbox': equipment['bbox'],  # Claudeの推測座標
                 'risk_level': equipment['risk_level'],
                 'description': equipment['description'],
-                'confidence': rekognition_obj['confidence']
+                'confidence': 75.0,  # Claude検出の仮想信頼度
+                'source': 'claude'
             })
-        else:
-            logger.warning(f"object_indexが範囲外: {object_index} (最大: {len(rekognition_result)-1})")
     
-    logger.info(f"結果マージ完了: {len(equipment_list)}個の機器")
+    logger.info(f"結果マージ完了: {len(equipment_list)}個の機器（Rekognition: {sum(1 for e in equipment_list if e['source'] == 'rekognition')}個, Claude: {sum(1 for e in equipment_list if e['source'] == 'claude')}個）")
     return {'equipment': equipment_list}
