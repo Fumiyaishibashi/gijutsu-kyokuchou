@@ -82,7 +82,7 @@ export default function CameraCapture({ onCapture, onError }: CameraCaptureProps
       <button
         onClick={capture}
         disabled={hasPermission === false}
-        className={`absolute bottom-8 left-1/2 transform -translate-x-1/2 w-16 h-16 rounded-full shadow-lg transition-all flex items-center justify-center z-20 ${
+        className={`fixed bottom-8 left-1/2 transform -translate-x-1/2 w-16 h-16 rounded-full shadow-lg transition-all flex items-center justify-center z-50 ${
           hasPermission === false
             ? 'bg-slate-600 cursor-not-allowed opacity-30' 
             : 'bg-sky-500 hover:bg-sky-600 hover:scale-110 active:scale-95 cursor-pointer'
