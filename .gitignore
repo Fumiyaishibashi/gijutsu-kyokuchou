@@ -45,3 +45,5 @@ next-env.d.ts
 
 # deployment artifacts
 deployment.zip
+
+slide.md

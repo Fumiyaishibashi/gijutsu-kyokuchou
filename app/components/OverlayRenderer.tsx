@@ -84,20 +84,26 @@ export default function OverlayRenderer({
     return () => window.removeEventListener('resize', updateImageDisplay);
   }, [updateImageDisplay]);
 
-  // 機器の中心マーカーのスタイル計算
-  const calculateMarkerStyle = (equipment: Equipment): React.CSSProperties => {
+  // バウンディングボックスのスタイル計算
+  const calculateBoundingBoxStyle = (equipment: Equipment): React.CSSProperties => {
     const { bbox } = equipment;
     const { width, height, offsetX, offsetY } = imageDisplay;
 
-    // バウンディングボックスの中心座標
-    const centerX = offsetX + ((bbox.x + bbox.width / 2) / 100) * width;
-    const centerY = offsetY + ((bbox.y + bbox.height / 2) / 100) * height;
+    // パーセンテージをピクセルに変換（画像の実際の表示サイズ基準）
+    const left = offsetX + (bbox.x / 100) * width;
+    const top = offsetY + (bbox.y / 100) * height;
+    const boxWidth = (bbox.width / 100) * width;
+    const boxHeight = (bbox.height / 100) * height;
 
     return {
       position: 'absolute',
-      left: `${centerX}px`,
-      top: `${centerY}px`,
-      transform: 'translate(-50%, -50%)',
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${boxWidth}px`,
+      height: `${boxHeight}px`,
+      border: `4px solid ${RISK_COLORS[equipment.risk_level]}`,
+      pointerEvents: 'auto',
+      cursor: 'pointer'
     };
   };
 
@@ -213,20 +219,12 @@ export default function OverlayRenderer({
           
           return (
             <div key={index}>
-              {/* 機器の中心マーカー */}
+              {/* バウンディングボックス */}
               <div
-                style={calculateMarkerStyle(eq)}
+                style={calculateBoundingBoxStyle(eq)}
                 onClick={() => onEquipmentClick(eq)}
-                className="pointer-events-auto cursor-pointer"
-              >
-                <div 
-                  className="w-4 h-4 rounded-full animate-pulse"
-                  style={{ 
-                    backgroundColor: color,
-                    boxShadow: `0 0 12px ${color}, 0 0 24px ${color}`
-                  }}
-                />
-              </div>
+                className="transition-all hover:opacity-80"
+              />
 
               {/* 吹き出し */}
               <div
