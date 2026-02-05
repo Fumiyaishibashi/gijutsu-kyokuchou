@@ -180,7 +180,7 @@ def get_image_from_s3(bucket: str, key: str) -> bytes:
 
 def encode_image_to_base64(image_bytes: bytes) -> str:
     """
-    画像をBase64エンコード
+    画像をBase64エンコード（必要に応じて圧縮）
     
     Args:
         image_bytes: 画像のバイトデータ
@@ -188,7 +188,71 @@ def encode_image_to_base64(image_bytes: bytes) -> str:
     Returns:
         Base64エンコードされた文字列
     """
-    return base64.b64encode(image_bytes).decode('utf-8')
+    # Bedrockの画像サイズ制限: 5MB
+    MAX_SIZE = 5 * 1024 * 1024  # 5MB
+    
+    # 画像サイズが5MB以下ならそのままエンコード
+    if len(image_bytes) <= MAX_SIZE:
+        return base64.b64encode(image_bytes).decode('utf-8')
+    
+    # 5MBを超える場合は圧縮
+    logger.info(f"画像サイズが大きいため圧縮します: {len(image_bytes)} bytes")
+    
+    try:
+        from PIL import Image
+        from io import BytesIO
+        
+        # 画像を開く
+        image = Image.open(BytesIO(image_bytes))
+        
+        # RGBに変換（PNGのアルファチャンネル対応）
+        if image.mode in ('RGBA', 'LA', 'P'):
+            image = image.convert('RGB')
+        
+        # 品質を下げて圧縮（品質85から開始）
+        quality = 85
+        while quality > 20:
+            output = BytesIO()
+            image.save(output, format='JPEG', quality=quality, optimize=True)
+            compressed_bytes = output.getvalue()
+            
+            if len(compressed_bytes) <= MAX_SIZE:
+                logger.info(f"圧縮完了: {len(image_bytes)} bytes -> {len(compressed_bytes)} bytes (品質: {quality})")
+                return base64.b64encode(compressed_bytes).decode('utf-8')
+            
+            quality -= 10
+        
+        # それでも大きい場合はリサイズ
+        logger.info("品質を下げても5MBを超えるため、リサイズします")
+        width, height = image.size
+        scale = 0.8
+        
+        while scale > 0.3:
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            output = BytesIO()
+            resized_image.save(output, format='JPEG', quality=85, optimize=True)
+            compressed_bytes = output.getvalue()
+            
+            if len(compressed_bytes) <= MAX_SIZE:
+                logger.info(f"リサイズ完了: {width}x{height} -> {new_width}x{new_height}, {len(compressed_bytes)} bytes")
+                return base64.b64encode(compressed_bytes).decode('utf-8')
+            
+            scale -= 0.1
+        
+        # 最終手段: 品質20で保存
+        output = BytesIO()
+        resized_image.save(output, format='JPEG', quality=20, optimize=True)
+        compressed_bytes = output.getvalue()
+        logger.warning(f"最小品質で圧縮: {len(compressed_bytes)} bytes")
+        return base64.b64encode(compressed_bytes).decode('utf-8')
+        
+    except Exception as e:
+        logger.error(f"画像圧縮エラー: {e}")
+        # エラーの場合は元の画像をそのまま返す（エラーになるが、ログに残る）
+        return base64.b64encode(image_bytes).decode('utf-8')
 
 
 def detect_objects_with_rekognition(bucket: str, key: str) -> List[Dict[str, Any]]:
