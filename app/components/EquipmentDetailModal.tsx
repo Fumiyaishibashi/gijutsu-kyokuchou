@@ -9,6 +9,56 @@ interface EquipmentDetailModalProps {
 }
 
 /**
+ * 機器名から検索クエリを生成
+ * メーカー名や型番を含めてより具体的な検索を可能にする
+ * 
+ * @param equipmentName - 機器名
+ * @returns Google検索用のクエリ文字列
+ */
+function generateSearchQuery(equipmentName: string): string {
+  // 機器名をそのまま使用（メーカー名や型番が含まれている場合が多い）
+  // 例: "HHKB Professional HYBRIDキーボード" -> "HHKB Professional HYBRID マニュアル"
+  
+  // 不要な一般名詞を除去するパターン
+  const genericTerms = [
+    'キーボード',
+    'マウス',
+    'モニター',
+    'ディスプレイ',
+    'スピーカー',
+    'ヘッドホン',
+    'マイク',
+    'カメラ',
+    '機器',
+    '装置',
+    'システム',
+    'ラックマウント',
+    '放送',
+    '制御'
+  ];
+  
+  // 機器名から一般名詞を除去して、メーカー名や型番を抽出
+  let specificName = equipmentName;
+  
+  // 括弧内の情報を保持（型番などが含まれることが多い）
+  // 例: "VTRレコーダー（型番: ABC-123）" -> "ABC-123"
+  
+  // 一般名詞を除去
+  genericTerms.forEach(term => {
+    // 語尾の一般名詞を除去
+    specificName = specificName.replace(new RegExp(term + '$'), '').trim();
+  });
+  
+  // 空になった場合は元の名前を使用
+  if (!specificName || specificName.length < 3) {
+    specificName = equipmentName;
+  }
+  
+  // 検索クエリを生成
+  return `${specificName} マニュアル`;
+}
+
+/**
  * 機器詳細モーダルコンポーネント
  * 選択された機器の詳細情報を表示
  */
@@ -100,7 +150,7 @@ export default function EquipmentDetailModal({
             <div>
               <h3 className="text-sm font-medium text-slate-400 mb-2">マニュアル検索</h3>
               <a
-                href={`https://www.google.com/search?q=${encodeURIComponent(equipment.name + ' マニュアル')}`}
+                href={`https://www.google.com/search?q=${encodeURIComponent(generateSearchQuery(equipment.name))}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-4 py-2 bg-slate-700/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
