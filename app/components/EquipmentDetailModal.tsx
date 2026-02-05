@@ -81,7 +81,7 @@ export default function EquipmentDetailModal({
           </div>
 
           {/* 公式マニュアル */}
-          {equipment.manual_url && (
+          {equipment.manual_url ? (
             <div>
               <h3 className="text-sm font-medium text-slate-400 mb-2">公式マニュアル</h3>
               <a
@@ -94,6 +94,21 @@ export default function EquipmentDetailModal({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
                 <span className="text-sm font-medium">マニュアルを開く</span>
+              </a>
+            </div>
+          ) : (
+            <div>
+              <h3 className="text-sm font-medium text-slate-400 mb-2">マニュアル検索</h3>
+              <a
+                href={`https://www.google.com/search?q=${encodeURIComponent(equipment.name + ' マニュアル')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-slate-700/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <span className="text-sm font-medium">Googleで検索</span>
               </a>
             </div>
           )}
