@@ -13,35 +13,39 @@ const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
  * 画像を圧縮してBlobを返す
  * 
  * @param file - 元の画像ファイル
- * @returns 圧縮された画像Blob
+ * @returns 圧縮された画像Blob（JPEG形式）
  */
 export async function compressImage(file: File | Blob): Promise<Blob> {
-  // ファイルサイズが既に制限以下の場合はそのまま返す
-  if (file.size <= MAX_SIZE_BYTES) {
-    console.log(`画像サイズは制限以下です: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
-    return file;
-  }
-
-  console.log(`画像を圧縮します: ${(file.size / 1024 / 1024).toFixed(2)}MB -> 目標: ${MAX_SIZE_MB}MB`);
+  const originalSize = file.size;
+  console.log(`[圧縮開始] 元のサイズ: ${(originalSize / 1024 / 1024).toFixed(2)}MB`);
 
   try {
-    // 圧縮オプション
+    // 圧縮オプション（常に圧縮してJPEGに変換）
     const options = {
       maxSizeMB: MAX_SIZE_MB,
       maxWidthOrHeight: 1920, // 最大解像度
       useWebWorker: true,
-      fileType: 'image/jpeg', // JPEGに変換
-      initialQuality: 0.8, // 初期品質
+      fileType: 'image/jpeg', // 必ずJPEGに変換
+      initialQuality: 0.85, // 初期品質
     };
 
     // 圧縮実行
     const compressedFile = await imageCompression(file as File, options);
     
-    console.log(`圧縮完了: ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`);
+    const compressedSize = compressedFile.size;
+    const compressionRatio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
+    
+    console.log(`[圧縮完了] ${(originalSize / 1024 / 1024).toFixed(2)}MB -> ${(compressedSize / 1024 / 1024).toFixed(2)}MB (${compressionRatio}%削減)`);
+    console.log(`[圧縮完了] ファイル形式: ${compressedFile.type}`);
+    
+    // 5MB以下になっているか確認
+    if (compressedSize > MAX_SIZE_BYTES) {
+      console.warn(`[警告] 圧縮後も5MBを超えています: ${(compressedSize / 1024 / 1024).toFixed(2)}MB`);
+    }
     
     return compressedFile;
   } catch (error) {
-    console.error('画像圧縮エラー:', error);
+    console.error('[圧縮エラー]', error);
     throw new Error('画像の圧縮に失敗しました');
   }
 }

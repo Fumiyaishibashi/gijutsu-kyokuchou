@@ -34,15 +34,19 @@ export default function CameraCapture({ onCapture, onError }: CameraCaptureProps
     const imageSrc = webcamRef.current?.getScreenshot();
     if (imageSrc) {
       try {
+        console.log('[CameraCapture] 撮影完了 - 圧縮開始');
+        
         // Base64をBlobに変換
         const blob = base64ToBlob(imageSrc);
+        console.log('[CameraCapture] 元のサイズ:', blob.size, 'bytes');
         
-        // 画像を圧縮（5MB制限対応）
+        // 画像を圧縮（5MB制限対応、JPEG形式に変換）
         const compressedBlob = await compressImage(blob);
+        console.log('[CameraCapture] 圧縮完了:', compressedBlob.size, 'bytes');
         
         onCapture(compressedBlob);
       } catch (error) {
-        console.error('画像変換・圧縮エラー:', error);
+        console.error('[CameraCapture] 画像変換・圧縮エラー:', error);
         onError(error as Error);
       }
     }

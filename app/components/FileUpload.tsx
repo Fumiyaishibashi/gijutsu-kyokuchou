@@ -61,17 +61,23 @@ export default function FileUpload({
       try {
         validateFile(file);
         
-        // 画像を圧縮（5MB制限対応）
+        console.log('[FileUpload] 圧縮開始:', file.name, file.size, 'bytes');
+        
+        // 画像を圧縮（5MB制限対応、JPEG形式に変換）
         const compressedBlob = await compressImage(file);
         
-        // BlobをFileに変換
-        const compressedFile = new File([compressedBlob], file.name, {
+        // BlobをFileに変換（拡張子を.jpgに変更）
+        const fileName = file.name.replace(/\.[^.]+$/, '.jpg');
+        const compressedFile = new File([compressedBlob], fileName, {
           type: 'image/jpeg',
           lastModified: Date.now(),
         });
         
+        console.log('[FileUpload] 圧縮完了:', compressedFile.name, compressedFile.size, 'bytes');
+        
         onFileSelect(compressedFile);
       } catch (error) {
+        console.error('[FileUpload] エラー:', error);
         onError(error as Error);
       }
     }
@@ -98,17 +104,23 @@ export default function FileUpload({
       try {
         validateFile(file);
         
-        // 画像を圧縮（5MB制限対応）
+        console.log('[FileUpload] ドロップ - 圧縮開始:', file.name, file.size, 'bytes');
+        
+        // 画像を圧縮（5MB制限対応、JPEG形式に変換）
         const compressedBlob = await compressImage(file);
         
-        // BlobをFileに変換
-        const compressedFile = new File([compressedBlob], file.name, {
+        // BlobをFileに変換（拡張子を.jpgに変更）
+        const fileName = file.name.replace(/\.[^.]+$/, '.jpg');
+        const compressedFile = new File([compressedBlob], fileName, {
           type: 'image/jpeg',
           lastModified: Date.now(),
         });
         
+        console.log('[FileUpload] 圧縮完了:', compressedFile.name, compressedFile.size, 'bytes');
+        
         onFileSelect(compressedFile);
       } catch (error) {
+        console.error('[FileUpload] エラー:', error);
         onError(error as Error);
       }
     }
