@@ -195,11 +195,11 @@ def detect_objects_with_rekognition(bucket: str, key: str) -> List[Dict[str, Any
     try:
         rekognition = get_rekognition_client()
         
-        # アプローチB: 検出感度を上げる（MinConfidence=50, MaxLabels=30）
+        # アプローチA: 標準的な検出感度（MinConfidence=70, MaxLabels=20）
         response = rekognition.detect_labels(
             Image={'S3Object': {'Bucket': bucket, 'Name': key}},
-            MaxLabels=30,  # 20 → 30に増やす
-            MinConfidence=50,  # 70 → 50に下げる（より多く検出）
+            MaxLabels=20,
+            MinConfidence=70,
             Features=['GENERAL_LABELS']
         )
         
@@ -295,6 +295,7 @@ JSON形式のみを返し、他の説明文は含めないでください。"""
 def build_equipment_identification_prompt(detected_objects: List[Dict[str, Any]]) -> str:
     """
     機器識別用のプロンプトを構築（Rekognition検出結果を使用）
+    アプローチA: 画像全体を見せて、Rekognitionの検出結果から放送機器を選別
     
     Args:
         detected_objects: Rekognitionで検出された物体リスト
@@ -312,7 +313,9 @@ def build_equipment_identification_prompt(detected_objects: List[Dict[str, Any]]
 画像内に以下の物体が検出されました：
 {objects_summary}
 
-この画像を見て、各物体が放送機器かどうかを判定し、以下の情報を返してください：
+**重要**: この画像を見て、上記の検出結果の中から「放送機器」に該当するものだけを選別してください。
+
+以下の情報を返してください：
 
 {{
   "equipment": [
@@ -332,11 +335,13 @@ def build_equipment_identification_prompt(detected_objects: List[Dict[str, Any]]
 - UNKNOWN: 機器を識別できない場合
 
 重要な注意事項（悲観的AI戦略）：
-1. 機器の種類が不明な場合は、推測せずに "UNKNOWN" を使用してください
-2. ケーブルの種類が判断できない場合は、"WARNING" を使用してください
-3. 少しでも不確実な場合は、安全側に倒して "WARNING" または "DANGER" を選択してください
-4. 放送機器ではない物体（椅子、机など）は除外してください
+1. **放送機器ではない物体（椅子、机、壁、床、人など）は必ず除外してください**
+2. 機器の種類が不明な場合は、推測せずに "UNKNOWN" を使用してください
+3. ケーブルの種類が判断できない場合は、"WARNING" を使用してください
+4. 少しでも不確実な場合は、安全側に倒して "WARNING" または "DANGER" を選択してください
 5. object_indexは、上記の物体リストのインデックス（0から始まる）を指定してください
+6. **画像全体を見て、検出された物体が本当に放送機器かどうかを判断してください**
+7. **検出漏れがある場合（画像に写っているが検出されていない放送機器）は、無視してください**
 
 JSON形式のみを返し、他の説明文は含めないでください。"""
 
