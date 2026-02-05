@@ -436,7 +436,11 @@ def build_equipment_identification_prompt(detected_objects: List[Dict[str, Any]]
 4. ケーブルの種類が判断できない場合は、"WARNING" を使用
 5. 少しでも不確実な場合は、安全側に倒して "WARNING" または "DANGER" を選択
 6. バウンディングボックスの座標は、画像の左上を(0,0)、右下を(100,100)とするパーセンテージで表現
-7. **manual_url**: 機器の公式マニュアルやメーカーの製品ページのURLが分かる場合のみ含めてください（不明な場合は省略）
+7. **manual_url（重要）**: 
+   - 実際に存在することが確実な公式マニュアルのURLのみを含めてください
+   - URLを推測したり、作り出したりしないでください
+   - 確実でない場合は、manual_urlフィールド自体を省略してください
+   - 例: HHKBの場合、https://happyhackingkb.com/manual/ は存在しないため含めない
 
 JSON形式のみを返し、他の説明文は含めないでください。"""
 
