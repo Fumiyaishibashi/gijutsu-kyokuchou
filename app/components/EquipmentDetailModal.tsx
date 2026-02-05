@@ -19,7 +19,7 @@ function generateSearchQuery(equipmentName: string): string {
   // 機器名をそのまま使用（メーカー名や型番が含まれている場合が多い）
   // 例: "HHKB Professional HYBRIDキーボード" -> "HHKB Professional HYBRID マニュアル"
   
-  // 不要な一般名詞を除去するパターン
+  // 不要な一般名詞（語尾に付くもの）
   const genericTerms = [
     'キーボード',
     'マウス',
@@ -32,27 +32,44 @@ function generateSearchQuery(equipmentName: string): string {
     '機器',
     '装置',
     'システム',
+    'ラックマウント機器',
     'ラックマウント',
-    '放送',
-    '制御'
+    '放送機器',
+    '制御装置'
   ];
   
   // 機器名から一般名詞を除去して、メーカー名や型番を抽出
-  let specificName = equipmentName;
+  let specificName = equipmentName.trim();
+  let removedTerm = '';
   
-  // 括弧内の情報を保持（型番などが含まれることが多い）
-  // 例: "VTRレコーダー（型番: ABC-123）" -> "ABC-123"
-  
-  // 一般名詞を除去
-  genericTerms.forEach(term => {
-    // 語尾の一般名詞を除去
-    specificName = specificName.replace(new RegExp(term + '$'), '').trim();
-  });
-  
-  // 空になった場合は元の名前を使用
-  if (!specificName || specificName.length < 3) {
-    specificName = equipmentName;
+  // 一般名詞を除去（語尾のみ）
+  for (const term of genericTerms) {
+    const regex = new RegExp(term + '$');
+    if (regex.test(specificName)) {
+      specificName = specificName.replace(regex, '').trim();
+      removedTerm = term;
+      break; // 最初にマッチしたものだけ除去
+    }
   }
+  
+  // 除去後の文字列をチェック
+  // 1. 空になった場合 -> 元の名前を使用
+  // 2. 短すぎる場合（3文字未満） -> 元の名前を使用
+  // 3. 英数字が含まれている場合 -> メーカー名や型番の可能性が高いのでそのまま使用
+  // 4. それ以外 -> 除去した一般名詞を戻す
+  
+  if (!specificName || specificName.length < 3) {
+    // 空または短すぎる -> 元の名前を使用
+    specificName = equipmentName;
+  } else if (!/[A-Za-z0-9]/.test(specificName)) {
+    // 英数字が含まれていない -> メーカー名や型番がない可能性が高い
+    // 除去した一般名詞を戻す（例: "不明なケーブル" -> "不明なケーブル マニュアル"）
+    if (removedTerm) {
+      specificName = equipmentName; // 元の名前を使用
+    }
+  }
+  // else: 英数字が含まれている -> メーカー名や型番がある可能性が高い
+  // 例: "HHKB Professional HYBRID" -> そのまま使用
   
   // 検索クエリを生成
   return `${specificName} マニュアル`;
