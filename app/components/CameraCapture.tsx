@@ -15,23 +15,17 @@ interface CameraCaptureProps {
 export default function CameraCapture({ onCapture, onError }: CameraCaptureProps) {
   const webcamRef = useRef<Webcam>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [isReady, setIsReady] = useState(false);
 
   // カメラ権限エラーハンドリング
   const handleUserMediaError = useCallback((error: string | DOMException) => {
     console.error('カメラアクセスエラー:', error);
     setHasPermission(false);
-    setIsReady(false);
     onError(new Error('カメラへのアクセスが拒否されました。設定からカメラ権限を許可してください'));
   }, [onError]);
 
   // カメラ権限取得成功
   const handleUserMedia = useCallback(() => {
     setHasPermission(true);
-    // カメラストリームが開始されたら少し待ってから準備完了とする
-    setTimeout(() => {
-      setIsReady(true);
-    }, 500);
   }, []);
 
   // 写真撮影
@@ -85,19 +79,17 @@ export default function CameraCapture({ onCapture, onError }: CameraCaptureProps
         className="w-full h-full object-contain"
       />
 
-      {hasPermission !== false && (
-        <button
-          onClick={capture}
-          disabled={!isReady}
-          className={`absolute bottom-8 left-1/2 transform -translate-x-1/2 w-16 h-16 rounded-full shadow-lg transition-all flex items-center justify-center ${
-            isReady 
-              ? 'bg-sky-500 hover:bg-sky-600 hover:scale-110 active:scale-95 cursor-pointer' 
-              : 'bg-slate-600 cursor-not-allowed opacity-50'
-          }`}
-        >
-          <div className="w-12 h-12 bg-white rounded-full"></div>
-        </button>
-      )}
+      <button
+        onClick={capture}
+        disabled={hasPermission === false}
+        className={`absolute bottom-8 left-1/2 transform -translate-x-1/2 w-16 h-16 rounded-full shadow-lg transition-all flex items-center justify-center z-20 ${
+          hasPermission === false
+            ? 'bg-slate-600 cursor-not-allowed opacity-30' 
+            : 'bg-sky-500 hover:bg-sky-600 hover:scale-110 active:scale-95 cursor-pointer'
+        }`}
+      >
+        <div className="w-12 h-12 bg-white rounded-full"></div>
+      </button>
     </div>
   );
 }
