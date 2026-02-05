@@ -13,6 +13,8 @@ import traceback
 from typing import Dict, List, Any
 from datetime import datetime, timedelta
 from botocore.exceptions import ClientError
+from PIL import Image, ImageDraw
+from io import BytesIO
 
 # ロガーの設定
 logger = logging.getLogger()
@@ -64,7 +66,7 @@ def get_rekognition_client():
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
-    S3イベントから画像を取得し、RekognitionとBedrockで分析
+    S3イベントから画像を取得し、RekognitionとBedrockで分析（2段階Claude分析）
     
     Args:
         event: S3イベント通知
@@ -87,17 +89,32 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # 画像をBase64エンコード
         image_base64 = encode_image_to_base64(image_bytes)
         
-        # Rekognitionで物体検出
+        # 【1段目】Rekognitionで物体検出
         rekognition_result = detect_objects_with_rekognition(bucket, key)
         logger.info(f"Rekognition検出: {len(rekognition_result)}個の物体")
         
-        # Claudeで機器識別とリスク判定
+        # 【1段目】Claudeで機器識別とリスク判定
         claude_result = analyze_equipment_with_claude(image_base64, rekognition_result)
         logger.info(f"Claude識別: {len(claude_result.get('equipment', []))}個の機器")
         
-        # 結果をマージ
-        final_result = merge_results(rekognition_result, claude_result)
-        logger.info(f"分析完了: {len(final_result.get('equipment', []))}個の機器を検出")
+        # 【1段目】結果をマージ
+        equipment_list = merge_results(rekognition_result, claude_result)['equipment']
+        logger.info(f"1段目完了: {len(equipment_list)}個の機器を検出")
+        
+        # 【2段目】バウンディングボックスを描画
+        annotated_image_bytes = draw_bounding_boxes(image_bytes, equipment_list)
+        annotated_image_base64 = encode_image_to_base64(annotated_image_bytes)
+        logger.info("バウンディングボックス描画完了")
+        
+        # 【2段目】Claudeで位置調整
+        adjustments = refine_positions_with_claude(annotated_image_base64, equipment_list)
+        logger.info(f"位置調整情報取得: {len(adjustments.get('adjustments', []))}個")
+        
+        # 【2段目】位置調整を適用
+        final_equipment_list = apply_position_adjustments(equipment_list, adjustments)
+        
+        final_result = {'equipment': final_equipment_list}
+        logger.info(f"分析完了: {len(final_equipment_list)}個の機器を検出")
         
         # DynamoDBに結果を保存
         save_result_to_dynamodb(key, final_result)
@@ -107,7 +124,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'body': json.dumps({
                 'message': '分析完了',
                 'imageKey': key,
-                'equipmentCount': len(final_result.get('equipment', []))
+                'equipmentCount': len(final_equipment_list)
             })
         }
         
@@ -195,11 +212,11 @@ def detect_objects_with_rekognition(bucket: str, key: str) -> List[Dict[str, Any
     try:
         rekognition = get_rekognition_client()
         
-        # アプローチC: 検出感度を極限まで上げる（MinConfidence=15, MaxLabels=50）
+        # アプローチC: 検出感度を調整（MinConfidence=30, MaxLabels=50）
         response = rekognition.detect_labels(
             Image={'S3Object': {'Bucket': bucket, 'Name': key}},
             MaxLabels=50,
-            MinConfidence=15,
+            MinConfidence=30,
             Features=['GENERAL_LABELS']
         )
         
@@ -724,3 +741,266 @@ def merge_results(
     
     logger.info(f"結果マージ完了: {len(equipment_list)}個の機器（Rekognition: {sum(1 for e in equipment_list if e['source'] == 'rekognition')}個, Claude: {sum(1 for e in equipment_list if e['source'] == 'claude')}個）")
     return {'equipment': equipment_list}
+
+
+def draw_bounding_boxes(image_bytes: bytes, equipment_list: List[Dict[str, Any]]) -> bytes:
+    """
+    画像にバウンディングボックスを描画
+    
+    Args:
+        image_bytes: 元画像のバイトデータ
+        equipment_list: 機器リスト（バウンディングボックス付き）
+    
+    Returns:
+        バウンディングボックスを描画した画像のバイトデータ
+    """
+    try:
+        # 画像を開く
+        image = Image.open(BytesIO(image_bytes))
+        draw = ImageDraw.Draw(image)
+        
+        # 画像サイズ
+        width, height = image.size
+        
+        # 各機器のバウンディングボックスを描画
+        for i, equipment in enumerate(equipment_list):
+            bbox = equipment['bbox']
+            
+            # パーセンテージをピクセルに変換
+            x = (bbox['x'] / 100) * width
+            y = (bbox['y'] / 100) * height
+            box_width = (bbox['width'] / 100) * width
+            box_height = (bbox['height'] / 100) * height
+            
+            # 矩形を描画（赤色、太さ4）
+            draw.rectangle(
+                [x, y, x + box_width, y + box_height],
+                outline='red',
+                width=4
+            )
+            
+            # 機器番号を描画
+            draw.text((x, y - 20), f"#{i}", fill='red')
+        
+        # 画像をバイトデータに変換
+        output = BytesIO()
+        image.save(output, format='JPEG')
+        return output.getvalue()
+        
+    except Exception as e:
+        logger.error(f"バウンディングボックス描画エラー: {e}")
+        raise
+
+
+def build_position_refinement_prompt(equipment_list: List[Dict[str, Any]]) -> str:
+    """
+    位置調整用のプロンプトを構築（2段目Claude分析）
+    
+    Args:
+        equipment_list: 1段目で検出された機器リスト
+    
+    Returns:
+        プロンプト文字列
+    """
+    equipment_summary = "\n".join([
+        f"- 機器#{i}: {eq['name']} (source: {eq['source']})"
+        for i, eq in enumerate(equipment_list)
+    ])
+    
+    return f"""あなたは放送設備の専門家です。
+
+この画像には、以下の機器が検出され、赤い四角（バウンディングボックス）で囲まれています：
+{equipment_summary}
+
+**タスク: バウンディングボックスの位置確認と調整**
+
+各機器の赤い四角を見て、以下を判断してください：
+1. 四角が機器を正確に囲んでいるか
+2. 四角がずれている場合、正しい位置はどこか
+
+以下のJSON形式で返してください：
+
+{{
+  "adjustments": [
+    {{
+      "equipment_index": 機器のインデックス（0から始まる整数）,
+      "needs_adjustment": true/false,
+      "new_bbox": {{
+        "x": X座標（パーセンテージ 0-100）,
+        "y": Y座標（パーセンテージ 0-100）,
+        "width": 幅（パーセンテージ 0-100）,
+        "height": 高さ（パーセンテージ 0-100）
+      }}
+    }}
+  ]
+}}
+
+重要な注意事項：
+1. **needs_adjustment=true**: 四角がずれている場合のみ
+2. **needs_adjustment=false**: 四角が正確な場合（new_bboxは不要）
+3. バウンディングボックスの座標は、画像の左上を(0,0)、右下を(100,100)とするパーセンテージで表現
+4. 機器全体を囲むように調整してください
+
+JSON形式のみを返し、他の説明文は含めないでください。"""
+
+
+def refine_positions_with_claude(
+    annotated_image_base64: str,
+    equipment_list: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """
+    2段目Claude分析: バウンディングボックスの位置を調整
+    
+    Args:
+        annotated_image_base64: バウンディングボックスを描画した画像（Base64）
+        equipment_list: 1段目で検出された機器リスト
+    
+    Returns:
+        位置調整情報
+    """
+    try:
+        # プロンプトの構築
+        prompt = build_position_refinement_prompt(equipment_list)
+        
+        # Bedrock APIコール
+        body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 2000,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": annotated_image_base64
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        logger.info("Claude位置調整APIを呼び出し中...")
+        bedrock = get_bedrock_runtime()
+        response = bedrock.invoke_model(
+            modelId=BEDROCK_MODEL_ID,
+            body=json.dumps(body)
+        )
+        
+        response_body = json.loads(response['body'].read())
+        logger.info(f"Claude位置調整応答: {json.dumps(response_body)}")
+        
+        # 応答を解析
+        return parse_position_refinement_response(response_body)
+        
+    except ClientError as e:
+        logger.error(f"Claude位置調整APIエラー: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Claude位置調整エラー: {e}")
+        raise
+
+
+def parse_position_refinement_response(response: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Claude位置調整応答を解析
+    
+    Args:
+        response: Claude API応答
+    
+    Returns:
+        検証済みの位置調整情報
+    """
+    try:
+        # テキストコンテンツを取得
+        content = response['content'][0]['text']
+        logger.info(f"Claude位置調整テキスト応答: {content}")
+        
+        # JSONを抽出（マークダウンコードブロックを除去）
+        if '```json' in content:
+            content = content.split('```json')[1].split('```')[0].strip()
+        elif '```' in content:
+            content = content.split('```')[1].split('```')[0].strip()
+        
+        # JSONをパース
+        result = json.loads(content)
+        
+        # スキーマ検証
+        if 'adjustments' not in result:
+            logger.warning("adjustments配列が見つかりません")
+            return {'adjustments': []}
+        
+        validated_adjustments = []
+        for adjustment in result['adjustments']:
+            # 必須フィールドの検証
+            if 'equipment_index' not in adjustment or 'needs_adjustment' not in adjustment:
+                logger.warning(f"必須フィールドが不足: {adjustment}")
+                continue
+            
+            # needs_adjustmentがtrueの場合、new_bboxが必須
+            if adjustment['needs_adjustment']:
+                if 'new_bbox' not in adjustment:
+                    logger.warning(f"new_bboxが不足: {adjustment}")
+                    continue
+                
+                # バウンディングボックスの検証
+                bbox = adjustment['new_bbox']
+                if not all(key in bbox for key in ['x', 'y', 'width', 'height']):
+                    logger.warning(f"バウンディングボックスが不正: {bbox}")
+                    continue
+                
+                # 座標範囲の検証（0-100）
+                if not all(0 <= bbox[key] <= 100 for key in ['x', 'y', 'width', 'height']):
+                    logger.warning(f"座標が範囲外: {bbox}")
+                    continue
+            
+            validated_adjustments.append(adjustment)
+        
+        return {'adjustments': validated_adjustments}
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON解析エラー: {e}")
+        logger.error(f"応答内容: {content}")
+        return {'adjustments': []}
+    except Exception as e:
+        logger.error(f"応答解析エラー: {e}")
+        return {'adjustments': []}
+
+
+def apply_position_adjustments(
+    equipment_list: List[Dict[str, Any]],
+    adjustments: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """
+    位置調整を適用
+    
+    Args:
+        equipment_list: 元の機器リスト
+        adjustments: 位置調整情報
+    
+    Returns:
+        位置調整後の機器リスト
+    """
+    adjusted_list = equipment_list.copy()
+    adjustment_count = 0
+    
+    for adjustment in adjustments.get('adjustments', []):
+        equipment_index = adjustment.get('equipment_index')
+        needs_adjustment = adjustment.get('needs_adjustment', False)
+        
+        if needs_adjustment and equipment_index is not None and 0 <= equipment_index < len(adjusted_list):
+            new_bbox = adjustment.get('new_bbox')
+            if new_bbox:
+                adjusted_list[equipment_index]['bbox'] = new_bbox
+                adjustment_count += 1
+                logger.info(f"機器#{equipment_index}の位置を調整しました")
+    
+    logger.info(f"位置調整完了: {adjustment_count}個の機器を調整")
+    return adjusted_list
