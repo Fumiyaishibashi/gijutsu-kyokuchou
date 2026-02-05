@@ -13,9 +13,15 @@ interface EquipmentDetailModalProps {
  * メーカー名や型番を含めてより具体的な検索を可能にする
  * 
  * @param equipmentName - 機器名
+ * @param useFullName - フルネームを使用するか（公式マニュアルがある場合はtrue）
  * @returns Google検索用のクエリ文字列
  */
-function generateSearchQuery(equipmentName: string): string {
+function generateSearchQuery(equipmentName: string, useFullName: boolean = false): string {
+  // 公式マニュアルがある場合は、フルネームで検索
+  if (useFullName) {
+    return `${equipmentName} マニュアル`;
+  }
+  
   // 機器名をそのまま使用（メーカー名や型番が含まれている場合が多い）
   // 例: "HHKB Professional HYBRIDキーボード" -> "HHKB Professional HYBRID マニュアル"
   
@@ -164,7 +170,7 @@ export default function EquipmentDetailModal({
                   <span className="text-sm font-medium">マニュアルを開く</span>
                 </a>
                 <a
-                  href={`https://www.google.com/search?q=${encodeURIComponent(generateSearchQuery(equipment.name))}`}
+                  href={`https://www.google.com/search?q=${encodeURIComponent(generateSearchQuery(equipment.name, true))}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 bg-slate-700/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors w-full justify-center"
@@ -180,7 +186,7 @@ export default function EquipmentDetailModal({
             <div>
               <h3 className="text-sm font-medium text-slate-400 mb-2">マニュアル検索</h3>
               <a
-                href={`https://www.google.com/search?q=${encodeURIComponent(generateSearchQuery(equipment.name))}`}
+                href={`https://www.google.com/search?q=${encodeURIComponent(generateSearchQuery(equipment.name, false))}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-4 py-2 bg-slate-700/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors w-full justify-center"
