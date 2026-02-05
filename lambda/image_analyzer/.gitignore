@@ -1,0 +1,12 @@
+# Python dependencies installed for Lambda deployment
+boto3/
+botocore/
+jmespath/
+s3transfer/
+dateutil/
+urllib3/
+six.py
+PIL/
+Pillow*
+*.dist-info/
+__pycache__/
